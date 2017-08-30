@@ -1,0 +1,226 @@
+################################ CREDITS #######################################
+    #Balance A Trois (BAT)
+    #23/08/2017
+    #Developed by EuroTurtle
+    #Contact: victorzuanazzi@gmail.com
+https://cryptotrader.org/live/kky49fmS4t4vGiwbf
+############################## END OF CREDITS ##################################
+
+################################ HEAD ##########################################
+trading = require 'trading'
+params = require 'params'
+ds = require 'datasources'
+
+ds.add 'kraken', 'xbt_eur', '4h'
+ds.add 'kraken', 'eth_xbt', '4h'
+ds.add 'kraken', 'eth_eur', '4h'
+#ds.add 'kraken', 'xbt_usd' #, '4h'
+
+
+MINIMUM_AMOUNT = .0025 #Minimum tradable amount.
+FEE = 0.0026
+TIMEOUT=30
+SAFETY_FACTOR = 0.9999
+################################ END OF HEAD ###################################
+
+init: ->
+    #This runs once when the bot is started
+    info "Balance A Trois (BAT)"
+    info "By: EuroTurtle"
+    info "Donations BTC: 34MC3qweX3Y7sJSWDV5rcfU8brsjy5noJ4"
+    info "Donations ETH: 0x3ED65a6d75b69C162De1379A2ccfc26efF3845c3"
+
+handle: ->
+######################### INITIALIZING VARIABLES ###############################
+    storage.botStartedAt ?= data.at
+    storage.finishChain ?= 0
+    numberOfPairs = @data.instruments.length-1 #used for multiple pairs of trade
+    instrument = [0.. numberOfPairs]
+    currencyAvailable = [0.. numberOfPairs]
+    assetsAvailable = [0.. numberOfPairs]
+
+    instrument[0] = @data.instruments[0]
+    total = @portfolio.positions[instrument[0].curr()].amount
+    for i in [1..@data.instruments.length-1] # skip primary instrument as we do no trade with it
+        instrument[i] = @data.instruments[i]
+        if instrument[i].price
+            total += @portfolio.positions[instrument[i].asset()].amount * instrument[i].price
+            currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+            assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+    #debug "Total portfolio: #{total} #{instrument[0].curr().toUpperCase()}"
+    storage.firstBalance ?= total
+    storage.currentBalance = total
+    storage.BHbitcoin ?= total/instrument[1].price
+    storage.BHether ?= total/instrument[3].price
+
+    direction = 0
+    trade = 0
+######################### VARIABLES INITIALIZED ################################
+
+######################### DEFINING TRADE STRATEGY ##############################
+
+    factor = instrument[1].price*instrument[2].price/instrument[3].price
+    if storage.finishChain == 1
+        debug "finishing last's tick trade..."
+        if factor < 1 #directon EUR >> BTC >> ETH >> EUR
+            direction = -1
+        else if factor > 1  # direction EUR >> ETH >> BTC >> EUR
+            direction = 1
+######################### TRADE STRATEGY DEFINED ###############################
+
+######################### EXECUTING TRADES #####################################
+    i=1
+    if factor < (1-3*FEE) or direction == -1 #directon EUR >> BTC >> ETH >> EUR
+        trade = 1
+        debug "direction: EUR >> BTC >> ETH >> EUR"
+        while i < numberOfPairs
+            currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+            assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+            debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+            buyAmount = (currencyAvailable[i]/instrument[i].price)*SAFETY_FACTOR
+            if buyAmount > MINIMUM_AMOUNT
+                if (trading.buy instrument[i], 'limit', buyAmount, instrument[i].price)
+                    #info "trade #{i} completed"
+                    i = i + 1
+                else
+                    warn "TRADE #{i} NOT COMPLETED"
+                    if (i != 1)
+                        storage.finishChain = 1 #if i == 1 the chain was not really started, so the bot has nothing to finish next tic
+                    i = numberOfPairs*2
+            else i = i + 1
+        if i <= numberOfPairs
+            i = @data.instruments.length-1
+            currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+            assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+            debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+            sellAmount = assetsAvailable[i] #*(1-0.0026)
+            if sellAmount > MINIMUM_AMOUNT
+                if (trading.sell instrument[i], 'limit', sellAmount, instrument[i].price)
+                    info "all trades completed successfuly"
+                    currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+                    assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+                    debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+                    storage.finishChain = 0
+                else
+                    warn "TRADE #{i} NOT COMPLETED"
+                    storage.finishChain = 1
+            else
+                warn "#{i}) NOT ENOUGH FUNDS #{sellAmount}"
+    else if factor > (1+3*FEE) or direction == 1 # direction EUR >> ETH >> BTC >> EUR
+        trade = 1
+        debug "direction EUR >> ETH >> BTC >> EUR"
+        i = numberOfPairs
+        currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+        assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+        debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+        buyAmount = (currencyAvailable[i]/instrument[i].price)*SAFETY_FACTOR
+        if buyAmount > MINIMUM_AMOUNT
+            if (trading.buy instrument[i], 'limit', buyAmount, instrument[i].price)
+                #info "trade #{i} completed"
+                i = i - 1
+            else
+                warn "TRADE #{i} NOT COMPLETED"
+                # storage.finishChain = 1 # no need to finish the trade next loop, the chain had not really started in this tic
+                i = -1
+                #currencyAvailable[3] = @portfolios[instrument[3].market].positions[instrument[3].curr()].amount
+                #debug "EUR: #{currencyAvailable[3]}"
+                #assetsAvailable[1] = @portfolios[instrument[1].market].positions[instrument[1].asset()].amount
+                #debug "BTC: #{assetsAvailable[1]}"
+                #assetsAvailable[3] = @portfolios[instrument[3].market].positions[instrument[3].asset()].amount
+                #debug "ETH: #{assetsAvailable[3]}"
+                #debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+        else i = i - 1
+        if i == 2
+            currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+            assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+            debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+            sellAmount = assetsAvailable[i]
+            if sellAmount > MINIMUM_AMOUNT
+                if (trading.sell instrument[i], 'limit', sellAmount, instrument[i].price)
+                    #info "trade #{i} completed successfuly"
+                    i = i - 1
+                else
+                    warn "TRADE #{i} NOT COMPLETED"
+                    i = -1
+                    storage.finishChain = 1
+            else i = i - 1
+        if i == 1
+            currencyAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].curr()].amount
+            assetsAvailable[i] = @portfolios[instrument[i].market].positions[instrument[i].asset()].amount
+            debug "currencyAvailable[#{i}] = #{currencyAvailable[i]} #{instrument[i].curr().toUpperCase()} || assetsAvailable[#{i}] = #{assetsAvailable[i]} #{instrument[i].asset().toUpperCase()}"
+            sellAmount = assetsAvailable[i]
+            if sellAmount > MINIMUM_AMOUNT
+                if (trading.sell instrument[i], 'limit', sellAmount, instrument[i].price)
+                    info "all trades completed successfuly"
+                    i = i - 1
+                    storage.finishChain = 0
+                else
+                    warn "TRADE #{i} NOT COMPLETED"
+                    i = -1
+                    storage.finishChain = 1
+        else if (i < 0 or i > numberOfPairs)
+            warn "#ERROR: problems found to finish the transaction"
+            currencyAvailable[1] = @portfolios[instrument[1].market].positions[instrument[1].curr()].amount
+            debug "EUR: #{currencyAvailable[1]}"
+            assetsAvailable[1] = @portfolios[instrument[1].market].positions[instrument[1].asset()].amount
+            debug "BTC: #{assetsAvailable[1]}"
+            assetsAvailable[3] = @portfolios[instrument[3].market].positions[instrument[3].asset()].amount
+            debug "ETH: #{assetsAvailable[3]}"
+
+
+######################### TRADES EXECUTED ######################################
+
+############################## END OF TIC ######################################
+    currencyAvailable[1] = @portfolios[instrument[1].market].positions[instrument[1].curr()].amount
+    assetsAvailable[1] = @portfolios[instrument[1].market].positions[instrument[1].asset()].amount
+    assetsAvailable[3] = @portfolios[instrument[3].market].positions[instrument[3].asset()].amount
+    storage.currentBalance = currencyAvailable[1] + assetsAvailable[1]*instrument[1].price + assetsAvailable[3]*instrument[3].price
+    yeld = (storage.currentBalance-storage.firstBalance)*100/storage.firstBalance
+    BuyHoldB = storage.BHbitcoin*instrument[1].price
+    BuyHoldE = storage.BHether*instrument[3].price
+    if trade == 1
+        debug "Starting balance: #{storage.firstBalance}"
+        debug "current balance: #{storage.currentBalance}"
+        if yeld > 0
+            info "yeld: #{yeld}%"
+        else warn "yeld: #{yeld}%"
+        debug "B&H #{instrument[1].asset().toUpperCase()}: #{BuyHoldB} #{instrument[1].curr().toUpperCase()} || B&H #{instrument[3].asset().toUpperCase()}: #{BuyHoldE} #{instrument[1].curr().toUpperCase()}"
+        warn "##################### BAT ##################################"
+
+
+ onRestart: ->
+    info "_____BAT RESTARTED______"
+    debug "Bot restarted at #{new Date(data.at)}"
+    debug " "
+    info "Balance A Trois (BAT)"
+    info "By: EuroTurtle"
+    info "Donations BTC: 34MC3qweX3Y7sJSWDV5rcfU8brsjy5noJ4"
+    info "Donations ETH: 0x3ED65a6d75b69C162De1379A2ccfc26efF3845c3"
+    debug " "
+    debug "Starting balance: #{storage.firstBalance}"
+    debug "yeld: #{(storage.currentBalance-storage.firstBalance)*100/storage.firstBalance}%"
+    #debug "B&H: #{storage.BuyHold}"
+    #debug "mean leveage: #{storage.MeanSell/storage.MeanBuy}"
+    #debug "leveage accumulated: #{storage.leverageAccumulated}"
+    #debug "Bot/B&H: #{(Balance/storage.BuyHold-1)*100}%"
+    debug "_________________________________________________________________"
+
+onStop: ->
+    info "_____BAT STOPED____"
+    debug "Bot started at #{new Date(storage.botStartedAt)}"
+    debug "Bot stopped at #{new Date(data.at)}"
+    debug " "
+    info "Balance A Trois (BAT)"
+    info "By: EuroTurtle"
+    info "Donations BTC: 34MC3qweX3Y7sJSWDV5rcfU8brsjy5noJ4"
+    info "Donations ETH: 0x3ED65a6d75b69C162De1379A2ccfc26efF3845c3"
+    debug " "
+    debug "Starting balance: #{storage.firstBalance}"
+    debug "yeld: #{(storage.currentBalance-storage.firstBalance)*100/storage.firstBalance}%"
+    #debug "B&H: #{storage.BuyHold}"
+    #debug "yeld: #{(Balance-storage.firstBalance)*100/storage.firstBalance}%"
+    #debug "mean leveage: #{storage.MeanSell/storage.MeanBuy}"
+    #debug "leveage accumulated: #{storage.leverageAccumulated}"
+    #debug "Bot/B&H: #{(Balance/storage.BuyHold-1)*100}%"
+    debug "_________________________________________________________________"
+
