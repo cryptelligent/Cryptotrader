@@ -1,0 +1,79 @@
+#EMASMACross
+#https://cryptotrader.org/strategies/pE2mQGodGwPt2z396
+###
+  The script engine is based on CoffeeScript (http://coffeescript.org)
+  The Cryptotrader API documentation is available at https://cryptotrader.org/api
+  
+  EMA CROSSOVER TRADING ALGORITHM
+  
+  The strategy enters buy orders when the short-term EMA crosses above the long-term EMA 
+  or enters sell orders when the short-term EMA crosses below the long-term EMA.
+###
+trading = require 'trading' # import core trading module
+talib = require 'talib' # import technical indicators library (https://cryptotrader.org/talib)
+
+# Initialization method called before the script starts. 
+# Context object holds script data and will be passed to 'handle' method. 
+init: ->
+    @context.buy_treshold = 1.75
+    @context.sell_treshold = 0.75
+    @context.breakout_treshold = 1.25
+
+serialize: ->
+    lastdiff:@context.lastdiff
+    lastprice: @context.lastprice
+    
+# This method is called for each tick
+handle: ->
+    
+    # data object provides access to market data
+    
+    instrument = @data.instruments[0]
+    cash =@portfolios[instrument.market].positions[instrument.curr()].amount
+     # calculate EMA value using ta-lib function
+    short = instrument.ema(20)
+    sma = talib.SMA
+            inReal: instrument.close
+            startIdx: 0
+            endIdx: instrument.close.length - 1
+            optInTimePeriod: 50
+  
+    long = _.last sma
+  #  debug "#{long}"
+    # plot chart data
+    plot
+        ema20: short
+        sma50: long
+    diff = 100 * (short - long) / ((short + long) / 2)
+    
+    pricediff = 100 * (instrument.price - context.lastprice) / ((instrument.price + context.lastprice) / 2)
+    
+   # if diff > 0 and pricediff > @context.breakout_treshold and context.lastdiff < diff  #and context.lastdiff < context.buy_treshold / 2
+    #    info "breakout dedected: #{pricediff}%"
+    
+    #debug "lastdiff: #{context.lastdiff} -- cur diff: #{diff}"
+    # Uncomment next line for some debugging
+    #debug 'EMA difference: '+diff.toFixed(3)+' price: '+instrument.price.toFixed(2)+' at '+new Date(data.at)
+  
+    if (diff > @context.buy_treshold and @context.lastdiff < @context.buy_treshold ) or (diff > 0 and pricediff > @context.breakout_treshold and context.lastdiff < diff ) #and context.lastdiff < context.buy_treshold / 2 
+        # The portfolio object gives access to information about funds 
+        # instrument.curr() returns base asset id e.g cny
+        if @portfolio.positions[instrument.curr()].amount > 0 and @portfolio.positions[instrument.asset()].amount <= 0
+            # open long position
+            trading.buy instrument,'market', cash  / instrument.price
+    else 
+        closediff = 100*  (instrument.price - short ) / ((short + instrument.price )/ 2 )
+       # debug "EMA 20: #{short} -  Currenct price: #{instrument.price}"
+        #debug "Diff #{closediff}"
+        
+        if closediff < -@context.sell_treshold
+        #    # instrument.asset() returns traded asset id, for example: "btc"
+        
+        
+            if @portfolio.positions[instrument.asset()].amount > 0
+                # close long position
+                trading.sell instrument
+            
+           
+    context.lastdiff=diff
+    context.lastprice=instrument.price
