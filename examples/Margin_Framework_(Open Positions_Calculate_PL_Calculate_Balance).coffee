@@ -5,8 +5,7 @@
 #So no one else has to bang their head against the wall, here is code that should calculate what your current balance is while you have an open margin position.
 #If your current balance ever reaches 0 or goes negative, then you would be margin called by the exchange.
 
-
-mt = require 'margin_trading' # import margin trading module
+mt = require 'margin_trading' # import margin trading module 
 talib = require 'talib'  # import technical indicators library (https://cryptotrader.org/talib)
 
 class Margin
@@ -29,9 +28,9 @@ class Margin
             return pl
 
     @OpenPositionCurrentBalance: (currentPrice, startingBalance, marginPosition) ->
-        return (startingBalance + (marginPosition.amount * marginPosition.price) * (currentPrice - marginPosition.price)/marginPosition.price)
+        return (startingBalance + marginPosition.amount * (currentPrice - marginPosition.price))
 
-init: ->
+init: -> 
     #Initialize things
     storage.initialized ?= false
 
