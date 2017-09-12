@@ -2,7 +2,7 @@
     #An example of function to adjust different instruments ticks arrays
     #11/09/2017
     #Developed byCryptelligent
-    #see also 
+    #see also https://cryptotrader.org/topics/325869/a-problem-with-instruments-from-different-datasources
 ############################## END OF CREDITS ##################################
 
 ################################ HEAD ##########################################
