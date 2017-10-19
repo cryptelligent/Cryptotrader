@@ -1,0 +1,60 @@
+################################ CREDITS #######################################
+    #BarUP&Down example
+    #03/09/2017
+    #Algorithm by halogen
+    #Developed by cryptelligent
+############################## END OF CREDITS ##################################
+
+################################ HEAD ##########################################
+trading = require 'trading'
+params = require 'params'
+
+maximumOrderAmount = 1
+TIMEOUT = 30
+MINIMUM_AMOUNT = .0025 #Minimum tradable amount.
+FEE = 0.003
+TIMEOUT=30
+
+################################ END OF HEAD ###################################
+
+init: ->
+    #This runs once when the bot is started
+
+handle: ->
+    storage.botStartedAt ?= data.at
+    ins = @data.instruments[0]
+    tmp_arr = ins.pair.split("_")
+    fiat = tmp_arr[0].toUpperCase()
+    curr = tmp_arr[1].toUpperCase()
+    assetsAvailable = @portfolios[ins.market].positions[ins.asset()].amount
+    currencyAvailable = @portfolios[ins.market].positions[ins.curr()].amount
+    Balance = assetsAvailable*ins.price*(1-FEE) + currencyAvailable
+    maximumBuyAmount = (currencyAvailable/ins.price) * (1-FEE)
+    maximumSellAmount = (assetsAvailable * (1-FEE))
+    storage.firstBalance ?= assetsAvailable*ins.price + currencyAvailable
+    storage.startAssets ?= assetsAvailable + currencyAvailable/ins.price
+    storage.profit = (Balance-storage.firstBalance)*100/storage.firstBalance
+    debug "Current #{fiat}: #{assetsAvailable} | Current #{curr}: #{currencyAvailable} | Balance: #{Balance} | Profit: #{storage.profit}%"
+    open =   ins.open[ins.open.length-1]
+    open2 =  ins.open[ins.open.length-3]
+    open4 =  ins.open[ins.open.length-4]
+    close =  ins.close[ins.close.length-1]
+    plot
+        open:open
+        close:close
+
+################################ trading ###################################
+    if ((open > close) and (close > open2))
+        if (maximumBuyAmount >= MINIMUM_AMOUNT)
+            trading.buy ins, 'limit', Math.min(maximumOrderAmount, maximumSellAmount), ins.price, TIMEOUT
+    if ((open < close) and (close < open4))
+        if (maximumSellAmount >= MINIMUM_AMOUNT)
+            trading.sell ins, 'limit', Math.min(maximumOrderAmount, maximumBuyAmount), ins.price, TIMEOUT
+
+################################ report ###################################
+
+onStop: ->
+    debug "Bot started at #{new Date(storage.botStartedAt)}"
+    debug "Bot stopped at #{new Date(data.at)}"
+    debug "firstBalance: #{storage.firstBalance}"
+    debug "startAssets: #{storage.startAssets}"
