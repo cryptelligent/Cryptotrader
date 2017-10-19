@@ -1,0 +1,39 @@
+#########    Input Parametrers
+
+y    =  8
+z    =  0.0000001
+trading          =  require 'trading'
+#########  Initialization 
+
+init: (context)->
+
+#########  Handle Routine 
+   
+handle: (context, data, storage)->
+    
+    storage.botStartedAt ?= data.at
+    instrument       =  data.instruments[0]
+    price            =  instrument.close[instrument.close.length - 1]
+    high             =  instrument.high[instrument.high.length - 1]
+    
+    debug "The current price: #{instrument.price}"
+    debug "The highest price: #{storage.max_high}"
+    
+    storage.current_stop_loss =  high - w  if !storage.current_stop_loss?
+
+    storage.max_high ?=  instrument.high[instrument.high.length - 1]  
+    if high > storage.max_high + z
+       w=  y * (1/100) * storage.max_high
+       storage.max_high = high
+       storage.current_stop_loss =  high - w
+
+    if price < Math.max( storage.current_stop_loss)
+       trading.sell instrument
+    
+    plot
+      Stop_Fix      : storage.fix_stop_loss
+      Stop_Trailing : storage.current_stop_loss
+
+#########  End 
+    
+
