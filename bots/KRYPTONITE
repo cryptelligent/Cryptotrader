@@ -1,0 +1,47 @@
+# https://cryptotrader.org/strategies/dXoq42KSKRsD7ouSv
+
+#########    Input Parametrers
+
+y    =  3.6
+z    =  0.00001
+trading          =  require 'trading'
+#########  Initialization 
+
+init: (context)->
+
+#########  Handle Routine 
+   
+handle: (context, data, storage)->
+    
+    storage.botStartedAt ?= data.at
+    instrument       =  data.instruments[0]
+    price            =  instrument.close[instrument.close.length - 1]
+    high             =  instrument.high[instrument.high.length - 1]
+    low             =  instrument.low[instrument.low.length - 1]
+    
+    debug "Current price: #{instrument.price}" 
+    debug " Highest price: #{storage.max_high}"
+    debug " Lowest price: #{low}"
+    b = 0
+    storage.current_stop_loss =  high - w  if !storage.current_stop_loss?
+
+    storage.max_high ?=  instrument.high[instrument.high.length - 1]  
+  
+    if high > storage.max_high + z
+        w=  y * (1/100) * storage.max_high
+        storage.max_high = high
+        storage.current_stop_loss =  high - w
+
+    
+    if price < Math.max( storage.current_stop_loss)
+        trading.sell instrument
+        if storage.current_stop_loss > high*1.1
+            b = 1
+    
+
+    plot
+      Stop_Loss : storage.current_stop_loss
+      high : high
+      low : low
+      price : price
+#########  End 
