@@ -1,0 +1,549 @@
+###########################
+#  🐛 Ferretz's UMAX Bot  #
+#  By Ferretz 4 Ferretz   #
+#  Rev 3.6 - 2017.11.06   #
+###########################
+
+# 3.6 - Initial Open Source Release
+
+
+trading = require 'trading' # import core trading module
+talib = require 'talib' # import technical indicators library (https://cryptotrader.org/talib)
+params = require 'params'
+
+VERSION = '3.6'
+
+MA_TYPE_SHORT = params.addOptions 'MA Type (Short)',['NONE', 'SMA','EMA','WMA','DEMA','TEMA','TRIMA','KAMA','MAMA','FAMA','HMA'],'EMA'
+MA_SHORT = params.add 'MA (Short)', 10
+
+MA_TYPE_MID = params.addOptions 'MA Type (Mid)',['NONE', 'SMA','EMA','WMA','DEMA','TEMA','TRIMA','KAMA','MAMA','FAMA','HMA'],'SMA'
+MA_MID = params.add 'MA (Mid)', 50
+
+MA_TYPE_LONG = params.addOptions 'MA Type (Long)',['NONE', 'SMA','EMA','WMA','DEMA','TEMA','TRIMA','KAMA','MAMA','FAMA','HMA'],'NONE'
+MA_LONG = params.add 'MA (Long)', 120
+
+MA_CROSSING_MODE = params.addOptions 'Crossing Mode',['Crossing + Threshold (Short/Mid)', 'Kick & Hold (Short/Mid + Mid/Long Crossing)', 'MACD (Short/Mid) + Signal (Long)'],'Crossing + Threshold (Short/Mid)'
+
+MAMA_FAST = .5
+MAMA_SLOW = .05
+
+THRESHOLD_HIGH = params.add 'HIGH Threshold', 0.5
+THRESHOLD_LOW = params.add 'LOW Threshold', -0.5
+
+BUY_ORDER_SIZE = params.add 'BUY Order Size [% of Currency]', 90
+SELL_ORDER_SIZE = params.add 'SELL Order Size [% of Assets]', 90
+
+MIN_TRADE_AMOUNT = params.add 'Minimum Trade Order [Currency]', 0.001
+
+STOP_LOSS = params.add 'Stop Loss (0=Disabled) [%]', 10
+TRAIL_STOP = params.add 'Trailing Stop (0=Disabled) [%]', 0
+
+PLOT_DIFF = params.add 'Plot the MA Δ', false
+
+ORDER_TYPE = params.addOptions 'Order type',['market','limit','iceberg'],'limit' # default value is 'Limit'
+BUY_PRICE = params.add 'Trade at [Market Price x]', 1.002
+
+MAX_FEE = 0.5
+
+class functions   
+    @stats: (instrument, tick, base, asset, currentPrice, currentAssets, currentCurrency, initialPrice, initialAssets, initialCurrency, orders, ordersFilled, profitSinceStart, profitSinceLastTransaction, buyHold, lastOperation, trend) ->
+        initialAssetsEq = (initialCurrency / initialPrice) + initialAssets
+        initalCurrencyEq = (initialAssets * initialPrice) + initialCurrency
+        currentCurrencyEq = (currentAssets * currentPrice) + currentCurrency
+        currentAssetsInBaseCurrency = (currentAssets * currentPrice)
+
+        
+        debug '🐛 Ultimate Moving Average Xing v' + VERSION + ' 🐛'
+                
+        # day = (tick * instrument.period/1440).toFixed(0)
+        debug ['Tick ' +  tick + ' ' + 'Period ' +  instrument.period]
+        debug ['Price ' + currentPrice.toFixed(2)]
+        debug ['Orders '+ orders + ' ' + 'Won ' + ordersFilled]        
+
+        cProfit = ['Current Operation ' + profitSinceLastTransaction.toFixed(2) + '%' + ' ' +'Last Operation ' + lastOperation]        
+        if profitSinceLastTransaction.toFixed(2) < 0
+            warn cProfit
+        else
+            info cProfit  
+
+        cGain = ['Profit ' + profitSinceStart.toFixed(2) + '%' + ' ' + 'Buy and Hold ' + buyHold.toFixed(2) + '%']
+        cEquity = ['Start ' + initalCurrencyEq.toFixed(2) + ' ' + base + ' ' + 'Current ' + currentCurrencyEq.toFixed(2) + ' ' + base]        
+        
+        if profitSinceStart < 0
+            warn cGain
+            warn cEquity
+        else
+            info cGain
+            info cEquity
+
+        debug ['Balance ' + currentAssets.toFixed(2) + ' ' + asset + ' (' + currentAssetsInBaseCurrency.toFixed(2) + ' ' + base + ') + ' + currentCurrency.toFixed(2) + ' ' + base]                
+
+    @maToInt: (maType) ->
+        # MA_TYPE: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3 (Default=SMA)
+        maValue = 0 
+
+        if maType == 'NONE'
+            maValue=-1
+        if maType == 'EMA'
+            maValue=1
+        if maType == 'WMA'
+            maValue=2
+        if maType == 'DEMA'
+            maValue=3
+        if maType == 'TEMA'
+            maValue=4
+        if maType == 'TRIMA'
+            maValue=5
+        if maType == 'KAMA'
+            maValue=6
+
+        # MAMA and FAMA uses the same MAMA but provides 2 return types :)
+        if maType == 'MAMA'
+            maValue=7  
+        if maType == 'FAMA'
+            maValue=7  
+        
+        # HULL needs WMA  
+        if maType == 'HMA'
+            maValue=99      
+        maValue
+    @calcMA: (maType, depth, real, hmaContext) ->
+        maTypeValue = functions.maToInt(maType)
+        taValue = 0
+    
+        if maTypeValue > -1
+            if (maType == 'HMA')
+                taValue = functions.calcHULL(depth, real, hmaContext)
+            else
+                if maTypeValue != 7
+                    taValue = talib.MA
+                        startIdx: 0 
+                        endIdx: real.length-1
+                        inReal: real
+                        optInTimePeriod: depth
+                        optInMAType: maTypeValue
+                
+                    taValue = _.last taValue
+                else
+                    taValue = talib.MAMA
+                        startIdx: 0 
+                        endIdx: real.length-1
+                        inReal: real
+                        optInFastLimit: MAMA_FAST
+                        optInSlowLimit: MAMA_SLOW
+                    
+                    # debug '[' + maType + '] outMAMA: ' + taValue.outMAMA[taValue.outMAMA.length - 1] + ' outFAMA: ' + taValue.outFAMA[taValue.outFAMA.length - 1]
+                    
+                    # MAMA / FAMA
+                    if maType == 'MAMA'
+                        taValue = _.last taValue.outMAMA
+                    else
+                        taValue = _.last taValue.outFAMA
+        taValue
+
+    @calcHULL: (depth, real, historyArray) ->
+        halfWMA = talib.MA
+            startIdx: 0 
+            endIdx: real.length-1
+            inReal: real
+            optInTimePeriod: Math.round (depth / 2)
+            optInMAType: 2 #WMA
+        halfWMA = halfWMA[halfWMA.length - 1]
+                
+        fullWMA = talib.MA
+            startIdx: 0 
+            endIdx: real.length-1
+            inReal: real
+            optInTimePeriod: depth
+            optInMAType: 2 #WMA
+        fullWMA = fullWMA[fullWMA.length - 1]
+        
+        tempHMA = (2*halfWMA) - fullWMA
+
+        historyArray.push(tempHMA)
+        
+        numPeriod = Math.round (Math.sqrt (depth))
+
+        # do not use instruments here but the tempHMA and keep its history
+        finalHMA = talib.MA
+            startIdx: 0 
+            endIdx: historyArray.length-1
+            inReal: historyArray
+            optInTimePeriod: numPeriod
+            optInMAType: 2 #WMA
+        finalHMA = finalHMA[finalHMA.length - 1]
+    
+        finalHMA
+
+# Initialization method called before the script starts. 
+# Context object holds script data and will be passed to 'handle' method. 
+init: ->
+    storage.botStartedAt ?= new Date()
+    storage.lastOp ?= 'Init'
+    storage.bought_price ?= 0.0
+    storage.sold_price ?= 0.0
+    storage.orders ?= 0
+    storage.ordersFilled ?= 0
+
+    @context.tick = 0
+    @context.lastOpTick = -100 # Do Not Tick at Start :)
+    @context.maxProfit = 0
+
+    @context.lastDeltaShortMid = 0
+
+    @context.shortHMAs = []
+    @context.midHMAs = []
+    @context.longHMAs = []
+
+    @context.macds = []
+    
+    setPlotOptions
+        Short:
+            color: 'black'
+        Mid:
+            color: 'navy'
+        Long:
+            color: 'crimson'
+        
+      
+        ThresholdHi:
+            color: 'lightgray'
+            secondary: true
+        ThresholdLow:
+            color: 'lightgray'
+            secondary: true
+
+        MACD:
+            color: 'darkred'
+            secondary: true
+
+        MACDSignal:
+            color: '#333'
+            secondary: true            
+            
+        Zero:
+            color: '#ccc'
+            secondary: true
+
+        ShortMidDelta: 
+            color: 'mediumblue'
+            secondary: true
+        MidLongDelta: 
+            color: 'dodgerblue'
+            secondary: true
+
+        TrendUp:
+            color: 'darkgreen'
+            secondary: true
+        TrendFlat:
+            color: 'gainsboro'
+            secondary: true
+
+        Kick:
+            color: 'gold'
+            secondary: true
+        Hold:
+            color: 'darkorange'
+            secondary: true
+
+        StopLoss:
+            color: 'black'
+            secondary: true;
+
+        TrailStop:
+            color: 'navy'
+            secondary: true;
+        
+# This method is called for each tick
+handle: ->
+    # data object provides access to market data
+    instrument = @data.instruments[0]
+    
+    base = instrument.base()
+    asset = instrument.asset()
+
+    currentCash = @portfolio.positions[base].amount
+    currentAsset = @portfolio.positions[asset].amount
+    currentPrice = instrument.price
+    currentPortfolioValue = currentCash + (currentAsset * currentPrice)
+   
+    # when null, set during first start
+    storage.initialCash ?= currentCash
+    storage.initialAsset ?= currentAsset     
+    storage.initialPrice ?= currentPrice
+    storage.initialPortfolioValue ?= currentPortfolioValue
+
+    # Fixes NaN issue when starting before the available period
+    if not storage.initialPortfolioValue > 0
+        storage.initialPortfolioValue = currentPortfolioValue  
+     
+    currentProfit = -0.00001
+    if ((currentPortfolioValue > 0) && (storage.initialPortfolioValue > 0))
+        currentProfit = ((currentPortfolioValue / storage.initialPortfolioValue) * 100) - 100
+   
+    buyHoldProfit = 0
+    if ((currentPrice > 0) && (storage.initialPrice > 0))
+        buyHoldProfit = ((currentPrice / storage.initialPrice) * 100) - 100
+
+    holdingAssets = false
+    holdingCurrency = false  
+
+    if (currentCash > MIN_TRADE_AMOUNT && (storage.lastOp == 'Init' || storage.lastOp == 'Sold' || storage.lastOp == 'Buying'))
+        holdingCurrency = true  
+
+    if (currentAsset * currentPrice > MIN_TRADE_AMOUNT && (storage.lastOp == 'Init' || storage.lastOp == 'Bought' || storage.lastOp == 'Selling'))
+        holdingAssets = true
+    
+    # experimental part 
+
+    taShort = 0
+    taMid = 0
+    taLong = 0 
+
+    taShort = functions.calcMA(MA_TYPE_SHORT, MA_SHORT, instrument.close, @context.shortHMAs)
+    taMid = functions.calcMA(MA_TYPE_MID, MA_MID, instrument.close, @context.midHMAs)
+
+    if (MA_TYPE_LONG != 'NONE') && (MA_CROSSING_MODE != 'MACD (Short/Mid) + Signal (Long)')
+        taLong = functions.calcMA(MA_TYPE_LONG, MA_LONG, instrument.close, @context.longHMAs)
+
+    maDeltaShortMid = (100 * (taShort / taMid)) - 100
+    maDeltaMidLong = (100 * (taShort / taLong)) - 100
+
+    if maDeltaShortMid > @context.lastDeltaShortMid
+        trend = 1
+    else
+        trend = -1
+
+    @context.lastDeltaShortMid = maDeltaShortMid
+
+    
+    thresholdHigh = THRESHOLD_HIGH
+    thresholdLow = THRESHOLD_LOW
+
+    shouldBuy = false
+    shouldSell = false
+
+    # 0.5% is profit :)
+    profitRate = 1.0 + (MAX_FEE / 100)
+    profitSinceLastTransaction = 0
+   
+    # we will trade faster if we are anyway profitable based on our last operation
+    if (holdingCurrency && storage.sold_price > 0)
+        if instrument.price > 0
+            profitSinceLastTransaction = (storage.sold_price / instrument.price) * 100
+   
+    if (holdingAssets && storage.bought_price > 0)
+        profitSinceLastTransaction = (instrument.price / storage.bought_price) * 100
+    
+    # plot chart data
+    if taShort != 0
+        plot
+            Short: taShort
+
+    if taMid != 0
+        plot
+            Mid: taMid
+
+    if taLong != 0
+        plot
+            Long: taLong    
+
+    if (profitSinceLastTransaction > 0)
+        profitCurrentTrade  = (profitSinceLastTransaction - 100)
+    else
+        profitCurrentTrade = 0
+
+    if (profitCurrentTrade > @context.maxProfit)
+        @context.maxProfit = profitCurrentTrade
+
+    # Stop Loss Mechanism
+    if (STOP_LOSS > 0) && (profitCurrentTrade < -STOP_LOSS)
+        if (holdingAssets)
+            shouldSell = true
+            plotMark
+                StopLoss: -10
+
+    if (TRAIL_STOP > 0) && @context.maxProfit > (2*TRAIL_STOP)
+        if profitCurrentTrade <  @context.maxProfit - TRAIL_STOP
+            if holdingAssets
+                shouldSell = true                
+                plotMark
+                    TrailStop: -25
+
+
+    # Threshold Xing
+    if (not shouldBuy && not shouldSell)
+        fk = false
+        gz = false
+
+        # We use the lower threshold if we don't have a second curve to define the greenzone
+
+        if MA_CROSSING_MODE == 'Crossing + Threshold (Short/Mid)' || MA_CROSSING_MODE == 'Kick & Hold (Short/Mid + Mid/Long Crossing)'                
+            fk = (maDeltaShortMid > thresholdHigh)
+            
+            if (taLong == 0 || MA_CROSSING_MODE == 'Crossing + Threshold (Short/Mid)')
+                gz = (maDeltaShortMid > thresholdLow)
+            else
+                gz = (maDeltaMidLong > thresholdLow)
+            
+            # diff plot
+            if PLOT_DIFF
+                plot
+                    Zero: 0
+                    ThresholdHigh: thresholdHigh
+                    ShortMidDelta: maDeltaShortMid 
+
+                if taLong == 0
+                    plot
+                        ThresholdLow: thresholdLow
+
+                if taLong != 0    
+                    plot
+                        MidLongDelta: maDeltaMidLong    
+                    
+        else 
+            # MACD 9 Periods
+            macd = (taShort - taMid) / currentPrice
+
+            @context.macds.push(macd)
+
+            macd_signal_periods = 9
+            macd_signal_type = 'SMA'
+
+            if (MA_TYPE_LONG != 'NONE')
+                macd_signal_type = MA_TYPE_LONG
+                macd_signal_periods = MA_LONG
+
+            # debug 'calculating macd: ' + macd_signal_type + ' ' + MA_LONG
+            macd_signal = functions.calcMA(macd_signal_type, macd_signal_periods, @context.macds, null)
+
+            fk = macd > macd_signal
+
+            if PLOT_DIFF
+                plot
+                    MACD: macd * 500
+                    MACDSignal: macd_signal * 500
+
+        if (fk)
+            if holdingCurrency
+                shouldBuy = true
+
+            plotMark
+                Kick: 45                
+
+        if (gz && not fk) 
+            plotMark
+                Hold: 45
+
+        if (not fk && not gz)
+            if holdingAssets
+                shouldSell = true
+                        
+    if shouldBuy
+        storage.lastOp = 'Buying'
+
+    if shouldSell
+        storage.lastOp = 'Selling'
+
+    functions.stats(instrument, @context.tick, base.toUpperCase(), asset.toUpperCase(), currentPrice, currentAsset, currentCash, storage.initialPrice, storage.initialAsset, storage.initialCash, storage.orders, storage.ordersFilled, currentProfit, profitCurrentTrade, buyHoldProfit, storage.lastOp, trend)
+
+    if shouldBuy
+        ticker = trading.getTicker instrument
+        #price = ticker.buy * BUY_PRICE
+
+        price = instrument.price * BUY_PRICE
+        
+        buyPrice = (currentCash * (BUY_ORDER_SIZE / 100)) 
+        buyQty = buyPrice / instrument.price
+        
+        if buyPrice >= MIN_TRADE_AMOUNT
+            tradingPrice = price
+
+            if ORDER_TYPE == 'market'
+                tradingPrice = 0
+
+            debug '################################################################'
+            info 'Trying to BUY ' + buyQty.toFixed(3) + ' (' + buyPrice.toFixed(2) + ') at ' + tradingPrice.toFixed(2) + ' instead of ' + instrument.price.toFixed(2) #+ ' at '+new Date(data.at)
+            info 'Ticker Buy: ' + ticker.buy.toFixed(3) + ' - Ticker Sell: ' + ticker.sell.toFixed(3) 
+            debug '################################################################'
+        
+            # price in exemple : instrument.price * BUY_PRICE
+
+            if (tradingPrice == 0)
+                tradingPrice = null
+
+            storage.orders++
+        
+            # buy using 80% of our cash at market price during 10 minutes
+            if trading.buy instrument, ORDER_TYPE, buyQty, tradingPrice, 60 * 10
+                debug '################################################################'
+                info 'BUY order traded'
+                debug '################################################################'
+            
+                storage.lastOp = 'Bought'
+                storage.bought_price = price
+                storage.ordersFilled++
+
+                @context.lastOpTick = @context.tick
+                @context.maxProfit = 0
+        else
+            # We act like we just bought to ensure we can smartly sell :)
+            warn 'Cannot BUY for ' + buyPrice + ' ' + base.toUpperCase() + ' (Min ' + MIN_TRADE_AMOUNT + ' ' + base.toUpperCase() + ')'
+            storage.lastOp = 'Bought'
+            storage.bought_price = price
+
+    if shouldSell               
+        ticker = trading.getTicker instrument
+        #price = ticker.sell / BUY_PRICE
+
+        price = instrument.price / BUY_PRICE
+                    
+        sellQty = currentAsset * (SELL_ORDER_SIZE / 100)
+        sellPrice = sellQty * instrument.price
+    
+        if sellPrice >= MIN_TRADE_AMOUNT     
+            tradingPrice = price
+
+            if ORDER_TYPE == 'market'
+                tradingPrice = 0                            
+
+            debug '################################################################'
+            warn 'Trying to SELL ' + sellQty.toFixed(3) + ' (' + sellPrice.toFixed(2) + ') at ' + tradingPrice.toFixed(2) + ' instead of ' + instrument.price.toFixed(2) # +' at '+new Date(data.at)            
+            warn 'Ticker Buy: ' + ticker.buy.toFixed(3) + ' - Ticker Sell: ' + ticker.sell.toFixed(3) 
+            debug '################################################################'
+
+            if (tradingPrice == 0)
+                tradingPrice = null
+
+            storage.orders++
+        
+            # previously : instrument.price / BUY_PRICE
+            # sell 80% of our currency at market price during 10 minutes
+            # 'limit,'market','iceberg'
+            if trading.sell instrument, ORDER_TYPE, sellQty, tradingPrice, 60 * 10
+                debug '################################################################'
+                warn 'SELL order traded'
+                debug '################################################################'
+                
+                storage.lastOp = 'Sold'
+                storage.sold_price = price
+                storage.ordersFilled++
+
+                # Disabled when selling?
+                @context.lastOpTick = @context.tick
+                @context.maxProfit = 0
+        else
+            # We act like we just bought to ensure we can smartly sell :)
+            warn 'Cannot SELL for ' + sellPrice + ' ' + base.toUpperCase() + ' (Min '+ MIN_TRADE_AMOUNT  + ' ' + base.toUpperCase() + ')'   
+            storage.lastOp = 'Sold'
+            storage.sold_price = price       
+            
+    @context.tick++
+
+onRestart: ->
+    debug "Bot restarted at #{new Date()}"
+
+onStop: ->
+    debug "Bot started at #{new Date(storage.botStartedAt)}"
+    debug "Bot stopped at #{new Date()}"
+    
