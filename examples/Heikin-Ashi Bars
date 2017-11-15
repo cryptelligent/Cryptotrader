@@ -1,0 +1,111 @@
+###
+Heikin-Ashi Bars
+by aspiramedia (converted from Chris Moody)
+1GGZU5mAUSLxVDegdxjakTLqZy7zizRH74
+###
+
+trading = require 'trading' # import core trading module
+talib = require 'talib' # import technical indicators library (https://cryptotrader.org/talib)
+
+class HEIKIN
+    constructor: () ->
+
+        @haclose = []
+
+        # INITIALIZE ARRAYS
+        for [0..500]
+            @haclose.push 0
+ 
+    calculate: (instrument) ->        
+
+        open = instrument.open[instrument.open.length-1]
+        close = instrument.close[instrument.close.length-1]
+        high = instrument.high[instrument.high.length-1]
+        low = instrument.low[instrument.low.length-1]
+
+        # REMOVE OLD DATA
+        @haclose.shift()
+
+        # CALCULATE
+        @haclose.push  ((open + high + low + close) / 4)
+
+        #PLOT
+        plot
+
+            close: close
+
+        # RETURN DATA
+        return @haclose 
+
+init: (context)->
+
+setPlotOptions
+        "down":
+            color: 'red'
+            secondary: true
+        "up":
+            color: 'cyan'
+            secondary: true
+        "RSI":
+            color: 'blue'
+            secondary: true
+
+    context.heikin = new HEIKIN()
+
+    # FOR FINALISE STATS
+    context.balance_curr = 0
+    context.balance_btc = 0
+    context.price = 0
+
+    @context.period = 7        # EMA period
+    @context.periodSLOW = 7    # EMA period   
+    @counter = 0
+
+handle: (context, data)->
+
+    instrument = data.instruments[0]
+    price = instrument.close[instrument.close.length - 1]
+
+    # CALLING INDICATORS
+    heikin  =  context.heikin.calculate(instrument)
+
+    rsi = (data, period, last = true) ->
+        period = data.length unless data.length >= period
+        results = talib.RSI
+          inReal: data
+          startIdx: 0
+          endIdx: data.length - 1
+          optInTimePeriod: period
+        if last then _.last(results) else results
+
+    rsiResults = rsi(heikin, @context.periodSLOW) 
+    #newRSI = _.last(rsiResults)
+
+    # FOR FINALISE STATS
+    context.price = instrument.close[instrument.close.length - 1]
+    context.balance_curr = portfolio.positions[instrument.curr()].amount
+    context.balance_btc = portfolio.positions[instrument.asset()].amount
+
+    # TRADING
+
+    # PLOTTING / DEBUG
+    if @counter > 1  
+        plot
+            "RSI" : rsiResults
+            if rsiResults >= 50
+                plotMark
+                    "up": 100
+
+            else if rsiResults < 50
+                plotMark
+                    "down": 0
+
+            debug "RSI: #{rsiResults}"
+    @counter++     
+finalize: (contex, data)-> 
+
+    # DISPLAY FINALISE STATS
+    if context.balance_curr > 10
+        info "Final BTC Equiv: " + context.balance_curr/context.price
+    if context.balance_btc > 0.05
+        info "Final BTC Value: " + context.balance_btc
