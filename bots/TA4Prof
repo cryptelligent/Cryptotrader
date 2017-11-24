@@ -1,19 +1,22 @@
 #################################################
-# https://cryptotrader.org/strategies/b8Ko2ePW7MK4dxGJc
 #			                                    #
 #  Name: TA4Prof 	                            #
 #			                                    #
 #  Description: Simple trading strategy         #
-#   based on MACD and RSI signals               #
-#                                               #
-#  Author: 	Cristian Vasiliu		            #
+#  using MACD, RSI and Ichimoku Cloud TA        #
+#  (based on Tweakaholic Framework v2.1 and     #
+#  on Thanasis "ALL INDICATORS Code")           #
+#  Author: 	MaxProf		                        #
 #  Date: 	05.11.2017                  		#
-#  Version: 	0.9                             #
+#  Version: 	2.1                             #
 #						                        #
 #################################################
 #
 # Change log
 # 0.9 prerelease version
+# 1.0 Ichimiku Cloud TA added
+# 2.0 New release
+# 2.1 small updates
 
 # Libraries
 trading = require 'trading'
@@ -21,7 +24,83 @@ talib = require 'talib'
 params = require 'params'
 # Libraries
 
-class functions
+# Configurable Parameters
+XXX                 = params.add '▼ TRADING SETTINGS (not implemented yet!)',false
+TradingCurrency     = params.add '    •% of Currency used for trading', 100 # default value is 100
+GLMargin            = params.add '    •Gain/Loss Margin (% less than Max price)', 3 # default value is 3%
+StopAfterFirstSell  = params.add '    •Stop after first sell', false # default value is false
+RebuyLower          = params.add '    •Rebuy lower than the last sell', false # default value is false
+XXX                 = params.add '▼ TA',false
+MACDsignal          = params.add '    •MACD', true # default value is true
+RSIsignal           = params.add '    •RSI', true # default value is false
+ICHIsignal          = params.add '    •Ichimiku Cloud', false # default value is false
+PLOT                = params.add '▼ PLOT',true
+MACDplot            = params.add '    •MACD graph', true # default value is true
+RSIplot             = params.add '    •RSI graph', true # default value is false
+ICHIplot            = params.add '    •Ichimiku Cloud graph', false # default value is false
+XXX                 = params.add '▼ DEBUG',false
+DEBUG_LEVEL         = params.addOptions '    •Level',['None','Logging','Debugging'],'Logging'
+# Configurable Parameters
+
+class Init
+  @init: (context) ->
+      
+    # BOT
+    storage.bot = {name: "TA4Prof", version: "2.1", author: "MaxProf", description: "Simple trading strategy based on MACD, RSI and Ichimoku Cloud TA"}
+    debug "#{storage.bot.name} trading bot." 
+    debug "Author: #{storage.bot.author}"
+    debug "Version: #{storage.bot.version}"
+    debug "Description: #{storage.bot.description}"
+    # BOT
+    
+    # bot  
+    
+    # Config
+    context.config = {}
+    context.config.macd =  MACDsignal
+    context.config.rsi = RSIsignal
+    context.config.ichi = ICHIsignal
+    # Config
+    context.lag  = 1
+    
+    context.ha = new HeikinAshi(3)
+    
+    # RSI
+    context.period = 20
+    # RSI
+    
+    # MACD
+    context.FastPeriod = 12    
+    context.SlowPeriod = 26 
+    context.SignalPeriod = 9
+    # MACD
+    
+    # ICHI
+    context.ichi = new Ichimoku(8, 11, 11, 11, 10)
+    # ICHI
+    
+    # TRADING
+    context.trading = true
+    context.buyings = 0
+    context.sellings = 0
+    # TRADING
+    
+    # GRAPH
+    context.graphHist = true 
+    # GRAPH
+    context.PLOT = PLOT
+    context.MACDplot = MACDplot
+    context.RSIplot = RSIplot
+    #debug "RSI = #{context.RSIplot}"
+    context.ICHIplot = ICHIplot
+    context.init = true
+    setPlotOptions
+        ink_1:
+            color: 'gree'
+        ink_2:
+            color: 'red'
+
+class TA
   
 ####### All TA-lib Indicatots ##################### 
 
@@ -32,315 +111,6 @@ class functions
             endIdx: data.length - lag
             optInTimePeriod: period
         _.last(results)
-        
-  @accbands: (high, low, close, lag, period) ->
-    results = talib.ACCBANDS
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-    result =
-      UpperBand: _.last(results.outRealUpperBand)
-      MiddleBand: _.last(results.outRealMiddleBand)
-      LowerBand: _.last(results.outRealLowerBand)
-    result
-    
-  @ad: (high,low,close,volume,lag,period) ->
-    results = talib.AD
-        high: high
-        low: low
-        close: close
-        volume: volume
-        startIdx: 0
-        endIdx: high.length - lag
-        optInTimePeriod: period
-    _.last(results)  
-
-  @adosc: (high, low, close, volume,lag,FastPeriod,SlowPeriod) ->
-    results = talib.ADOSC
-      high: high
-      low: low
-      close: close
-      volume: volume
-      startIdx: 0
-      endIdx: high.length - lag
-      optInFastPeriod: FastPeriod
-      optInSlowPeriod: SlowPeriod
-    _.last(results)
-  
-  @adx: (high, low, close, lag, period) ->
-    results = talib.ADX
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-     
-  @adxr: (high,low,close,lag,period) ->
-    results = talib.ADXR
-        high: high
-        low: low
-        close: close
-        startIdx: 0
-        endIdx: high.length - lag
-        optInTimePeriod: period
-     _.last(results)
-     
-  @apo: (data, lag, FastPeriod, SlowPeriod, MAType) ->
-    results = talib.APO
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInFastPeriod: FastPeriod
-      optInSlowPeriod: SlowPeriod
-      optInMAType: MAType
-    _.last(results)   
-     
-  @aroon: (high, low, lag, period) ->
-    results = talib.AROON
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-    result =
-      up: _.last(results.outAroonUp)
-      down: _.last(results.outAroonDown)
-    result
-    
-  @aroonosc: (high, low, lag, period) ->
-    results = talib.AROONOSC
-        high: high
-        low: low
-        startIdx: 0
-        endIdx: high.length - lag
-        optInTimePeriod: period
-     _.last(results)
-     
-  @atr: (high, low, close, lag, period) ->
-    results = talib.ATR
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-  
-  @avgprice: (open,high,low,close,lag,period) ->
-    results = talib.AVGPRICE
-        open: open
-        high: high
-        low: low
-        close: close
-        startIdx: 0
-        endIdx: open.length - lag
-        optInTimePeriod: period
-     _.last(results)
-     
-  @bbands: (data, period, lag, NbDevUp, NbDevDn,MAType) ->
-    results = talib.BBANDS
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-      optInNbDevUp: NbDevUp
-      optInNbDevDn: NbDevDn
-      optInMAType: MAType
-    result =
-      UpperBand: _.last(results.outRealUpperBand)
-      MiddleBand: _.last(results.outRealMiddleBand)
-      LowerBand: _.last(results.outRealLowerBand)
-    result
-  
-  @beta: (data_0,data_1,lag,period) ->
-    results = talib.BETA
-        inReal0: data_0
-        inReal1: data_1
-        startIdx: 0
-        endIdx: data_0.length - lag
-        optInTimePeriod: period
-     _.last(results)
-  
-  @bop: (open, high, low, close, lag) ->
-    results = talib.BOP
-      open: open
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-     _.last(results)
-  
-  
-  @cci: (high, low, close, lag, period) ->
-    results = talib.CCI
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-  
-  @cmo: (data,lag, period) ->
-    results = talib.CMO
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-  
-  @correl: (data_0, data_1, lag, period) ->
-    results = talib.CORREL
-      inReal0: data_0
-      inReal1: data_1
-      startIdx: 0
-      endIdx: data_0.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-   
-  @dema: (data, lag, period) ->
-    results = talib.DEMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-    
-  @dx: (high, low, close, lag, period) ->
-    results = talib.DX
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-  
-  @ema: (data, lag, period) ->
-    results = talib.EMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
- 
-  @ht_dcperiod: (data,lag) ->
-    results = talib.HT_DCPERIOD
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-    _.last(results)
-    
-  @ht_dcphase: (data,lag) ->
-    results = talib.HT_DCPHASE
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-    _.last(results)
-    
-  @ht_phasor: (data,lag) ->
-    results = talib.HT_PHASOR
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-    result =
-      phase: _.last(results.outInPhase)
-      quadrature: _.last(results.outQuadrature)
-    result
-   
-  
-  @ht_sine: (data,lag) ->
-    results = talib.HT_SINE
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-    _.last(results)   
-    result =
-      sine: _.last(results.outSine)
-      leadsine: _.last(results.outLeadSine)
-    result
-  
-   @ht_trendline: (data,lag) ->
-    results = talib.HT_TRENDLINE
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-    _.last(results) 
-
-  @ht_trendmode: (data,lag) ->
-    results = talib.HT_TRENDMODE
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-    _.last(results)
- 
-  @imi: (high, close, lag, period) ->
-    results = talib.IMI
-      open: open
-      close: close
-      startIdx: 0
-      endIdx: open.length - lag
-      optInTimePeriod: period
-     _.last(results)
- 
-  @kama: (data, lag, period) ->
-    results = talib.KAMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
- 
-  @linearreg: (data, lag, period) ->
-    results = talib.LINEARREG
-      inReal : data
-      startIdx: 0
-      endIdx: data.length-lag
-      optInTimePeriod:period
-    _.last(results)
-
-  @linearreg_angle: (data, lag, period) ->
-    results = talib.LINEARREG_ANGLE
-      inReal : data
-      startIdx: 0
-      endIdx: data.length-lag
-      optInTimePeriod:period
-    _.last(results)
-
-
-  @linearreg_intercept: (data, lag, period) ->
-    results = talib.LINEARREG_INTERCEPT
-      inReal : data
-      startIdx: 0
-      endIdx: data.length-lag
-      optInTimePeriod:period
-    _.last(results)
-  
-    
-  @linearreg_slope: (data, lag, period) ->
-    results = talib.LINEARREG_SLOPE
-      inReal : data
-      startIdx: 0
-      endIdx: data.length-lag
-      optInTimePeriod:period
-    _.last(results)
-    
- 
-  @ma: (data, lag, period,MAType) ->
-    results = talib.MA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-      optInMAType: MAType
-    _.last(results)
-
   
   @macd: (data, lag, FastPeriod,SlowPeriod,SignalPeriod) ->
     results = talib.MACD
@@ -355,475 +125,115 @@ class functions
       signal: _.last(results.outMACDSignal)
       histogram: _.last(results.outMACDHist)
     result
- 
- 
-  @macdext: (data, lag, FastPeriod,FastMAType, SlowPeriod,SlowMAType, SignalPeriod,SignalMAType) ->
-    results = talib.MACDEXT
-     inReal: data
-     startIdx: 0
-     endIdx: data.length - lag
-     optInFastPeriod: FastPeriod
-     optInFastMAType: FastMAType
-     optInSlowPeriod: SlowPeriod
-     optInSlowMAType: SlowMAType
-     optInSignalPeriod: SignalPeriod
-     optInSignalMAType: SignalMAType
-    result =
-      macd: _.last(results.outMACD)
-      signal: _.last(results.outMACDSignal)
-      histogram: _.last(results.outMACDHist)
-    result
- 
-  @macdfix: (data,lag, SignalPeriod) ->
-    results = talib.MACDFIX
-     inReal: data
-     startIdx: 0
-     endIdx: data.length - lag
-     optInSignalPeriod: SignalPeriod
-    result =
-      macd: _.last(results.outMACD)
-      signal: _.last(results.outMACDSignal)
-      histogram: _.last(results.outMACDHist)
-    result
 
-  @mama: (data, lag, FastLimitPeriod, SlowLimitPeriod) ->
-    results = talib.MAMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInFastLimit: FastLimitPeriod
-      optInSlowLimit: SlowLimitPeriod
-    result =
-      mama: _.last(results.outMAMA)
-      fama: _.last(results.outFAMA)
-    result   
+# Ichimoku
+class Ichimoku
+  constructor: (@tenkan_n = 8, @kijun_n = 11, @senkou_a_n = 11 , @senkou_b_n = 11, @chikou_n = 10) ->
+    @price = 0.0
+    @tenkan = 0.0
+    @kijun = 0.0
+    @senkou_a = []
+    @senkou_b = []
+    @chikou = []
 
-  @mavp: (data,periods, lag,MinPeriod,MaxPeriod, MAType) ->
-    results = talib.MAVP
-      inReal: data
-      inPeriods: periods
-      startIdx: 0
-      endIdx: data.length - lag
-      optInMinPeriod: MinPeriod
-      optInMaxPeriod: MaxPeriod
-      optInMAType: MAType
-     _.last(results)
-      
-  @max: (data, lag,period) ->
-    results = talib.MAX
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-  
-  @maxindex: (data, lag,period) ->
-    results = talib.MAXINDEX
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-    
-  
-  @medprice: (high,low,lag,period) ->
-    results = talib.MEDPRICE
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-    _.last(results)
-  
-  @mfi: (high, low, close, volume,lag, period) ->
-    results = talib.MFI
-      high: high
-      low: low
-      close: close
-      volume: volume
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-    _.last(results)
+  # get current ichimoku state
+  current: ->
+    c =
+      price: @price
+      tenkan: @tenkan
+      kijun: @kijun
+      senkou_a: @senkou_a[0]
+      senkou_b: @senkou_b[0]
+      chikou_span: Utils.diff(@chikou[@chikou.length - 1], @chikou[0])
+    return c
+
+  # update with latest instrument price data
+  put: (ins) ->
+    # update last close price
+    @price = ins.close[ins.close.length - 1]
+    # update tenkan sen
+    @tenkan = this._hla(ins, @tenkan_n)
+    # update kijun sen
+    @kijun = this._hla(ins, @kijun_n)
+    # update senkou span a
+    @senkou_a.push((@tenkan + @kijun) / 2)
+    Utils.splice(@senkou_a, @senkou_a_n)
+    # update senkou span b
+    @senkou_b.push(this._hla(ins, @senkou_b_n * 2))
+    Utils.splice(@senkou_b, @senkou_b_n)
+    # update chikou span
+    @chikou.push(ins.close[ins.close.length - 1])
+    Utils.splice(@chikou, @chikou_n)
+
+  # calc average of price extremes (high-low avg) over specified period
+  _hla: (ins, n) ->
+    hh = _.max(ins.high[-n..])
+    ll = _.min(ins.low[-n..])
+    return (hh + ll) / 2 
+# Ichimoku
+
+# Heikin-Ashi Candles
+class HeikinAshi
+  constructor: (@ha_method = 3) ->
+    @ins =
+      open: []
+      close: []
+      high: []
+      low: []
+      volumes: []
+
+  # update with latest instrument price data
+  put: (ins) ->
+    # push raw volume
+    @ins.volumes.push(ins.volumes[ins.volumes.length - 1])
+
+    # current raw candle (open/close/high/low)
+    curr_open = ins.open[ins.open.length - 1]
+    curr_close = ins.close[ins.close.length - 1]
+    curr_high = ins.high[ins.high.length - 1]
+    curr_low = ins.low[ins.low.length - 1]
+    if @ha_method <= 0
+      # HA Disabled!
+      @ins.open.push(curr_open)
+      @ins.close.push(curr_close)
+      @ins.high.push(curr_high)
+      @ins.low.push(curr_low)
+
    
-  @midpoint: (data,lag,period) ->
-    results = talib.MIDPOINT
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)  
-  
-  @midprice: (high, low, lag, period) ->
-    results = talib.MIDPRICE
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-    _.last(results) 
+    if @ha_method == 3
+      # HA Method 3 - similar to method 2 except open is based on
+      # previous raw candle instead of previous HA candle.
+      if @ins.open.length == 0
+        # initial candle
+        @ins.open.push(curr_open)
+        @ins.close.push(curr_close)
+        @ins.high.push(curr_high)
+        @ins.low.push(curr_low)
+      else
+        # every other candle
+        # previous raw candle open/close
+        prev_open = ins.open[ins.open.length - 2]
+        prev_close = ins.close[ins.close.length - 2]
+        # calculate current ha candle
+        curr_open_ha = (prev_open + prev_close) / 2
+        curr_close_ha = (curr_open + curr_close + curr_high + curr_low) / 4
+        @ins.open.push(curr_open_ha)
+        @ins.close.push(curr_close_ha)
+        @ins.high.push(_.max([curr_high, curr_open_ha, curr_close_ha]))
+        @ins.low.push(_.min([curr_low, curr_open_ha, curr_close_ha]))
 
-  @min: (data, lag,period) ->
-    results = talib.MIN
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-
-  @minindex: (data, lag,period) ->
-    results = talib.MININDEX
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-    
-  @minmax: (data,lag,period) ->
-    results = talib.MINMAX
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    result =
-      min: _.last(results.outMin)
-      max: _.last(results.outMax)
-    result  
-  
-   @minmaxindex: (data, lag,period) ->
-    results = talib.MINMAXINDEX
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    result =
-      min: _.last(results.outMinIdx)
-      max: _.last(results.outMaxIdx)
-    result
-   
-    
-  @minus_di: (high, low, close, lag, period) ->
-    results = talib.MINUS_DI
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-     
-  @minus_dm: (high, low, lag, period) ->
-    results = talib.MINUS_DM
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-     
-  @mom: (data,lag, period) ->
-    results = talib.MOM
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-    
-  @natr: (high, low, close, lag, period) ->
-    results = talib.NATR
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)  
-  
-  @obv: (data,volume,lag) ->
-    results = talib.OBV
-      inReal: data
-      volume: volume
-      startIdx: 0
-      endIdx: data.length - lag
-     _.last(results)  
-     
-  @plus_di: (high, low, close,lag, period) ->
-    results = talib.PLUS_DI
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-  
-  @plus_dm: (high, low, lag, period) ->
-    results = talib.PLUS_DM
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)   
-  
-  @ppo: (data, lag, FastPeriod, SlowPeriod, MAType) ->
-    results = talib.PPO
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInFastPeriod: FastPeriod
-      optInSlowPeriod: SlowPeriod
-      optInMAType: MAType
-    _.last(results)  
-  
-  @roc: (data, lag, period) ->
-    results = talib.ROC
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-  
-  @rocp: (data, lag, period) ->
-    results = talib.ROCP
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-  
-  @rocr: (data, lag, period) ->
-    results = talib.ROCR
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-  
-  @rocr100: (data, lag, period) ->
-    results = talib.ROCR100
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-  
-  @rsi: (data, lag, period) ->
-    results = talib.RSI
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-    
-  @sar: (high, low, lag, accel, accelmax) ->
-    results = talib.SAR
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInAcceleration: accel
-      optInMaximum: accelmax
-    _.last(results) 
-  
-  @sarext: (high,low,lag,StartValue, OffsetOnReverse, AccelerationInitLong,AccelerationLong,AccelerationMaxLong,AccelerationInitShort, AccelerationShort, AccelerationMaxShort) ->
-    results = talib.SAREXT
-      high: high
-      low: low
-      startIdx: 0
-      endIdx: high.length - lag
-      optInStartValue: StartValue
-      optInOffsetOnReverse: OffsetOnReverse
-      optInAccelerationInitLong: AccelerationInitLong
-      optInAccelerationLong: AccelerationLong
-      optInAccelerationMaxLong: AccelerationMaxLong
-      optInAccelerationInitShort: AccelerationInitShort
-      optInAccelerationShort: AccelerationShort
-      optInAccelerationMaxShort: AccelerationMaxShort
-    _.last(results)   
-  
-  @sma: (data, lag, period) ->
-    results = talib.SMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results) 
-    
-    
-  @stddev: (data,  lag, period,NbDev) ->
-    results = talib.STDDEV
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-      optInNbDev: NbDev
-    _.last(results)
-    
-  @stoch: (high,low,close,lag,fastK_period,slowK_period, slowK_MAType,slowD_period,slowD_MAType) ->
-    results = talib.STOCH
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInFastK_Period: fastK_period
-      optInSlowK_Period: slowK_period
-      optInSlowK_MAType: slowK_MAType 
-      optInSlowD_Period: slowD_period
-      optInSlowD_MAType: slowD_MAType
-    result =
-      K: _.last(results.outSlowK)
-      D: _.last(results.outSlowD)
-    result  
-
-  @stochf: (high, low, close, lag, fastK_period,fastD_period,fastD_MAType) ->
-    results = talib.STOCHF
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInFastK_Period: fastK_period
-      optInFastD_Period: fastD_period
-      optInFastD_MAType: fastD_MAType
-    result =
-      K: _.last(results.outFastK)
-      D: _.last(results.outFastD)
-    result
-  
-  @stochrsi: (data, lag, period, fastK_period,fastD_period,fastD_MAType) ->
-    results = talib.STOCHRSI
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-      optInFastK_Period: fastK_period
-      optInFastD_Period: fastD_period
-      optInFastD_MAType: fastD_MAType
-    result =
-      K: _.last(results.outFastK)
-      D: _.last(results.outFastD)
-    result
-  
-  @sum: (data, lag, period) ->
-    results = talib.SUM
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-  
-  @t3: (data, lag, period,vfactor ) ->
-    results = talib.T3
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-      optInVFactor: vfactor
-    _.last(results)
-    
-  @tema: (data, lag, period) ->
-    results = talib.TEMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
+    # restrict array lengths to reasonable max
+    _max_length = 250
+    Utils.splice(@ins.open, _max_length)
+    Utils.splice(@ins.close, _max_length)
+    Utils.splice(@ins.high, _max_length)
+    Utils.splice(@ins.low, _max_length)
+    Utils.splice(@ins.volumes, _max_length)
+# Heikin-Ashi Candles
  
-  @trange: (high, low, close,lag, period) ->
-    results = talib.TRANGE
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)  
-  
-  @trima: (data, lag, period) ->
-    results = talib.TRIMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-    
-  @trix: (data, lag, period) ->
-    results = talib.TRIX
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)  
-    
-  @tsf: (data,  lag, period) ->
-    results = talib.TSF
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-    
-  @typprice: (high, low, close, lag, period) ->
-    results = talib.TYPPRICE
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-     
-  @ultosc: (high, low, close, lag, Period1,Period2,Period3) ->
-    results = talib.ULTOSC
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod1: Period1
-      optInTimePeriod2: Period2
-      optInTimePeriod3: Period3
-    _.last(results) 
-  
-  @variance: (data,  lag, period,NbVar) ->
-    results = talib.VAR
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-      optInNbDev: NbVar
-    _.last(results)   
-  
-  @wclprice: (high, low, close, lag, period) ->
-    results = talib.WCLPRICE
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results)
-     
-  @willr: (high, low, close, lag, period) ->
-    results = talib.WILLR
-      high: high
-      low: low
-      close: close
-      startIdx: 0
-      endIdx: high.length - lag
-      optInTimePeriod: period
-     _.last(results) 
-     
-  @wma: (data, lag, period) ->
-    results = talib.WMA
-      inReal: data
-      startIdx: 0
-      endIdx: data.length - lag
-      optInTimePeriod: period
-    _.last(results)
-# Function Report #    
+# Other Functions
+class Utils  
+  # Function Report #    
   @reports_: (ins, lastCurrency, lastAsset, firstCurrency, firstAsset, firstAssetPrice)  ->
       firstBalance = firstAsset * firstAssetPrice + firstCurrency
       lastBalance = lastAsset * ins.price + lastCurrency
@@ -833,22 +243,97 @@ class functions
       result =   
         firstbalance: firstBalance
         lastbalance:  lastBalance 
-        efficiency: _.floor(((lastBalance / firstBalance) * 100), 2)
-        bh: _.floor(((lastBalanceBH / firstBalance) * 100), 2)
-        accumulation_efficiency: _.floor(((lastBalanceAsset / firstBalanceAsset) * 100), 2)
+        #efficiency: _.floor(((lastBalance / firstBalance) * 100), 2)
+        efficiency: _.floor(Utils.diff(lastBalance, firstBalance), 2)
+        #bh: _.floor(((lastBalanceBH / firstBalance) * 100), 2)
+        bh: _.floor(Utils.diff(lastBalanceBH, firstBalance), 2)
+        #accumulation_efficiency: _.floor(((lastBalanceAsset / firstBalanceAsset) * 100), 2)
+        accumulation_efficiency: _.floor(Utils.diff(lastBalanceAsset, firstBalanceAsset), 2)
       result
-# Functions Report #      
+  # Functions Report # 
+  
+  # populates the target array with instrument price data
+  @populate: (target, ins) ->
+    for i in [0..ins.close.length - 1]
+      t =
+        open: ins.open[..i]
+        close: ins.close[..i]
+        high: ins.high[..i]
+        low: ins.low[..i]
+        volumes: ins.volumes[..i]
+      target.put(t)
+  # populates the target array with instrument price data
+  
+  # restrict array length to specified max
+  @splice: (arr, l) ->
+    while arr.length > l
+      arr.splice(0, 1)
+      
+  # percent difference between values
+  @diff: (x, y) ->
+    ((x - y) / ((x + y) / 2)) * 100      
+# Other Functions  
+
+class Strategy
+  @decision: (config, instrument, indicators, lastAssetPrice, trade) ->
+    result = false    
+    #debug "Strategy:"
+    #debug " MACD signal: #{config.macd}"
+    #debug " RSI signal: #{config.rsi}"
+    #debug " ICHIMOKU cloud: #{config.ichi}"
+    if trade # buy
+        if !(indicators.macd.histogram >= 0) and config.macd 
+            #debug "MACD #{indicators.macd.histogram}"
+            MACD = false
+        else
+            MACD = true
+        if !(indicators.rsi < 40) and config.rsi
+            RSI = false
+        else
+            RSI = true
+        if !((instrument.price > indicators.ichi.senkou_b) && (indicators.ichi.senkou_a > indicators.ichi.senkou_b)) and config.ichi
+            ICHI = false 
+        else
+            ICHI = true
+        
+        #debug "MACD = #{MACD}"
+        #debug "RSI = #{RSI}"
+        #debug "ICHI = #{ICHI}"
+        
+        if (MACD && RSI && ICHI)
+            #debug "BUY!"
+            result = true
+        else 
+           result = false
+            
+    else # sell
+        if !(indicators.macd.histogram <= 0) && config.macd 
+            MACD = false
+        else
+            MACD = true
+        if !(indicators.rsi > 60) && config.rsi
+            RSI = false
+        else
+            RSI = true
+        if !((instrument.price < indicators.ichi.senkou_a) && (indicators.ichi.senkou_a < indicators.ichi.senkou_b)) and config.ichi
+            ICHI = false
+        else
+            ICHI = true
+        
+        #debug "MACD = #{MACD}"
+        #debug "RSI = #{RSI}"
+        #debug "ICHI = #{ICHI}"
+        
+        if (MACD && RSI && ICHI)
+            #debug "SELL!"
+            result = true
+        else
+            result = false
+    result
+
 init: (context) ->
 
-    context.lag  = 1
-    context.period = 20
-    context.FastPeriod = 12    
-    context.SlowPeriod = 26 
-    context.SignalPeriod = 9
-    context.trading = true
-    context.buyings = 0
-    context.sellings = 0
-    context.graphHist = true 
+    Init.init context
 
 handle: (context, data)->
 
@@ -869,233 +354,154 @@ handle: (context, data)->
     storage.firstAsset ?= assetsTotal
     storage.firstCurrency ?= currencyTotal
 
-    ##### define indicator functions ####### 
-  
-    #accbands= functions.accbands(instrument.high, instrument.low, instrument.close, context.lag, context.period)
-    #ad = functions.ad(instrument.high,instrument.low,instrument.close,instrument.volumes,context.lag,context.period)
-    #adosc = functions.adosc(instrument.high, instrument.low, instrument.close, instrument.volumes,context.lag,context.FastPeriod,context.SlowPeriod)    
-    #adx = functions.adx(instrument.high, instrument.low, instrument.close,context.lag, context.period) 
-    #adxr = functions.adxr(instrument.high,instrument.low,instrument.close,context.lag,context.period) 
-    #apo = functions.apo(instrument.close,context.lag,context.FastPeriod,context.SlowPeriod,context.MAType)
-    #aroon = functions.aroon(instrument.high, instrument.low,context.lag,context.period)    
-    #aroonosc = functions.aroonosc(instrument.high,instrument.low,context.lag,context.period) 
-    #atr = functions.atr(instrument.high, instrument.low, instrument.close, context.lag, context.period) 
-    #avgprice = functions.avgprice(instrument.open,instrument.high,instrument.low,instrument.close,context.lag,context.period)
-    #bbands =  functions.bbands(instrument.close, context.period, context.lag, context.NbDevUp, context.NbDevDn,context.MAType) 
-    #beta =  functions.beta(instrument.high,instrument.low,context.lag,context.period) 
-    #bop = functions.bop(instrument.open,instrument.high,instrument.low,instrument.close,context.lag)
-    #cci = functions.cci(instrument.high, instrument.low, instrument.close, context.lag,context.period) 
-    #cmo = functions.cmo(instrument.close,context.lag, context.period) 
-    #correl = functions.correl(instrument.high, instrument.low, context.lag, context.period)     
-    #dema = functions.dema(instrument.close,context.lag,context.period) 
-    #dx = functions.dx(instrument.high,instrument.low,instrument.close,context.lag,context.period) 
-    #ema  = functions.ema(instrument.close,context.lag,context.period)
-    #ht_dcperiod = functions.ht_dcperiod(instrument.close,context.lag)
-    #ht_dcphase = functions.ht_dcphase(instrument.close,context.lag) 
-    #ht_phasor = functions.ht_phasor(instrument.close,context.lag) 
-    #ht_sine = functions.ht_sine(instrument.close,context.lag)
-    #ht_trendline= functions.ht_trendline(instrument.close,context.lag)
-    #ht_trendmode = functions.ht_trendmode(instrument.close,context.lag)
-    #imi = functions.imi(instrument.open,instrument.close,context.lag,context.period) 
-    #kama = functions.kama(instrument.close,context.lag,context.period) 
-    #linearreg = functions.linearreg(instrument.close,context.lag,context.period) 
-    #linearreg_angle = functions.linearreg_angle(instrument.close,context.lag,context.period) 
-    #linearreg_intercept = functions.linearreg_intercept(instrument.close,context.lag,context.period) 
-    #linearreg_slope = functions.linearreg_slope(instrument.close,context.lag,context.period)
-    #ma = functions.ma(instrument.close,context.lag,context.period,context.MAType) 
-    macd = functions.macd(instrument.close, context.lag, context.FastPeriod,context.SlowPeriod,context.SignalPeriod)
-    #macdext = functions.macdext(instrument.close, context.lag, context.FastPeriod,context.FastMAType, context.SlowPeriod,context.SlowMAType, context.SignalPeriod,context.SignalMAType) 
-    #macdfix = functions.macdfix(instrument.close,context.lag,context.SignalPeriod) 
-    #mama = functions.mama(instrument.close,context.lag,context.FastLimitPeriod,context.SlowLimitPeriod) 
-    #mavp= functions.mavp(instrument.close,context.periods,context.lag,context.MinPeriod,context.MaxPeriod, context.MAType) 
-    #max_high = functions.max(instrument.high, context.lag,context.period)
-    #max_high = functions.max(instrument.high, context.lag,context.period)
-    #maxindex = functions.maxindex(instrument.close,context.lag,context.period) 
-    #medprice = functions.medprice(instrument.high,instrument.low,context.lag,context.period) 
-    #mfi = functions.mfi(instrument.high, instrument.low, instrument.close, instrument.volumes, context.lag,context.period) 
-    #midpoint = functions.midpoint(instrument.close,context.lag,context.period) 
-    #midprice = functions.midprice(instrument.high, instrument.low,context.lag, context.period) 
-    #min_low = functions.min(instrument.low, context.lag,context.period)
-    #minindex = functions.minindex(instrument.close,context.lag,context.period) 
-    #minmax = functions.minmax(instrument.close,context.lag,context.period) 
-    #minmaxindex = functions.minmaxindex(instrument.close,context.lag,context.period) 
-    #minus_di = functions.minus_di(instrument.high, instrument.low, instrument.close, context.lag, context.period)    
-    #minus_dm = functions.minus_dm(instrument.high,instrument.low,context.lag,context.period)
-    #mom = functions.mom(instrument.close,context.lag,context.period) 
-    #natr = functions.natr(instrument.high,instrument.low,instrument.close,context.lag,context.period) 
-    #obv = functions.obv(instrument.close,instrument.volumes,context.lag)
-    #plus_di = functions. plus_di(instrument.high, instrument.low, instrument.close,context.lag, context.period) 
-    #plus_dm = functions.plus_dm(instrument.high,instrument.low,context.lag,context.period) 
-    #ppo = functions.ppo(instrument.close, context.lag, context.FastPeriod,context.SlowPeriod,context.MAType)
-    #roc  = functions.roc(instrument.close,context.lag,context.period)
-    #rocp = functions.rocp(instrument.close,context.lag,context.period) 
-    #rocr = functions.rocr(instrument.close,context.lag,context.period) 
-    #rocr100 = functions.rocr100(instrument.close,context.lag,context.period) 
-    rsi  = functions.rsi(instrument.close,context.lag,context.period)
-    #sar = functions.sar(instrument.high, instrument.low, context.lag,context.accel, context.accelmax)    
-    #sarext = functions.sarext(instrument.high,instrument.low,context.lag,context.StartValue, context.OffsetOnReverse, context.AccelerationInitLong,context.AccelerationLong,context.AccelerationMaxLong,context.AccelerationInitShort, context.AccelerationShort, context.AccelerationMaxShort) 
-    #sma = functions.sma(instrument.close,context.lag,context.period) 
-    #stddev = functions.stddev(instrument.close,  context.lag, context.period,context.NbDev) 
-    #stoch = functions.stoch(instrument.high,instrument.low,instrument.close,context.lag,context.fastK_period,context.slowK_period, context.slowK_MAType,context.slowD_period,context.slowD_MAType)
-    #stochf = functions.stochf(instrument.high, instrument.low, instrument.close, context.lag, context.fastK_period,context.fastD_period,context.fastD_MAType)
-    #stochrsi = functions.stochrsi(instrument.close,context.lag,context.period,context.fastK_period,context.fastD_period,context.fastD_MAType) 
-    #sum = functions.sum(instrument.close,context.lag,context.period) 
-    #t3 = functions.t3(instrument.close,context.lag,context.period,context.vfactor)
-    #tema = functions.tema(instrument.close,context.lag,context.period)
-    #trange = functions.trange(instrument.high,instrument.low,instrument.close, context.lag,context.period)
-    #trima = functions.trima(instrument.close,context.lag,context.period) 
-    #trix = functions.trix(instrument.close,context.lag,context.period)
-    #tsf = functions.tsf(instrument.close, context.lag, context.period) 
-    #typprice = functions.typprice(instrument.high, instrument.low, instrument.close, context.lag, context.period) 
-    #ultosc = functions.ultosc(instrument.high, instrument.low, instrument.close,context.lag, context.Period1,context.Period2,context.Period3) 
-    #variance = functions.variance(instrument.close,context.lag,context.period,context.NbVar) 
-    #wclprice = functions.wclprice(instrument.high,instrument.low,instrument.close, context.lag,context.period) 
-    #willr = functions.willr(instrument.high,instrument.low,instrument.close, context.lag,context.period)
-    #wma = functions.wma(instrument.close,context.lag,context.period)
-
-
-    ######    debug indicators ################ 
+    ##### TA  ####### 
+    indicators = {}
+    indicators.macd = TA.macd(instrument.close, context.lag, context.FastPeriod,context.SlowPeriod,context.SignalPeriod)
+    indicators.rsi  = TA.rsi(instrument.close,context.lag,context.period)
+    if context.init
+        # initialise heikin-ashi
+        Utils.populate(context.ha, instrument)
+        # initialise ichimoku (from heikin-ashi data)
+        Utils.populate(context.ichi, context.ha.ins)
+        # initialisation complete
+        context.init = false
+    else
+    #    # handle new instrument (via heikin-ashi)
+        context.ha.put(instrument)
+        # initialise ichimoku (from heikin-ashi data)
+        context.ichi.put(context.ha.ins)
     
-    #debug "#{accbands.UpperBand}  #{accbands.MiddleBand} #{accbands.LowerBand}" 
-    #debug "#{ad}"
-    #debug "#{adosc}"
-    #debug "#{adx}" 
-    #debug "#{adxr}"
-    #debug "#{apo}"
-    #debug "#{aroon.up} #{aroon.down}"
-    #debug "#{aroonosc}"
-    #debug "#{atr} "
-    #debug "#{avgprice}"
-    #debug "#{bbands.UpperBand} #{bbands.MiddleBand} #{bbands.LowerBand}"
-    #debug "#{beta}"
-    #debug "#{bop}"
-    #debug "#{cci}"
-    #debug "#{cmo}"
-    #debug "#{correl}"
-    #debug "#{dema}"
-    #debug "#{dx}"
-    #debug "#{ema}"
-    #debug "#{ht_dcperiod}"
-    #debug "#{ht_dcphase}"
-    #debug "#{ht_phasor.phase} #{ht_phasor.quadrature}"
-    #debug "#{ht_sine.sine} #{ht_sine.leadsine}"
-    #debug "#{ht_trendline}"   
-    #debug "#{ht_trendmode}"
-    #debug "#{imi}"
-    #debug "#{kama}"
-    #debug "#{linearreg}"
-    #debug "#{linearreg_angle}"
-    #debug "#{linearreg_intercept}"
-    #debug "#{linearreg_slope}"
-    #debug "#{ma}" 
-    #debug "#{macd.macd}  #{macd.signal}  #{macd.histogram}"
-    #debug "#{macdext.macd}  #{macdext.signal} #{macdext.histogram}"
-    #debug "#{macdfix.macd}  #{macdfix.signal} #{macdfix.histogram}"
-    #debug "#{mama.mama} #{mama.fama}"
-    #debug "#{mavp}"
-    #debug "#{max_high}
-    #debug "#{maxindex}"
-    #debug "#{medprice}"
-    #debug "#{mfi}"
-    #debug "#{midpoint}"
-    #debug "#{midprice}"
-    #debug "#{min_low}"
-    #debug "#{minindex}"
-    #debug "#{minmax.min} #{minmax.max}"
-    #debug "#{minmaxindex.min} #{minmaxindex.max}"
-    #debug "#{minus_di}"
-    #debug "#{minus_dm}"
-    #debug "#{mom}"
-    #debug "#{natr}"
-    #debug "#{obv}" 
-    #debug "#{plus_di}"
-    #debug "#{plus_dm}"
-    #debug "#{ppo}"
-    #debug "#{roc}"
-    #debug "#{rocp}"
-    #debug "#{rocr}"
-    #debug "#{rocr100}"
-    #debug "#{rsi}"
-    #debug "#{sar}"
-    #debug "#{sarext}"
-    #debug "#{sma}"
-    #debug "#{stddev}"
-    #debug "#{stoch.K} #{stoch.D}"
-    #debug "#{stochf.K} #{stochf.D}"
-    #debug "#{stochrsi.K}#{stochrsi.D} "
-    #debug "#{sum}"
-    #debug "#{t3}"
-    #debug "#{tema}"
-    #debug "#{trange}"
-    #debug "#{trima}"
-    #debug "#{trix}"
-    #debug "#{tsf }"
-    #debug "#{typprice}"   
-    #debug "#{ultosc} "   
-    #debug "#{variance}"
-    #debug "#{wclprice}"
-    #debug "#{willr}"
-    #debug "#{wma}"
-
-# Plotting    
-    if context.graphHist 
-        graphHist = storage.firstAssetPrice * 0.80
-        context.graphHist = false
-    else     
-        graphHist = macd.histogram * 10 + storage.firstAssetPrice * 0.80
-        context.graphHist = true
+    c = context.ichi.current()
     
+    ichi =
+      tk_diff: Utils.diff(c.tenkan, c.kijun)
+      tenkan_min: _.min([c.tenkan, c.kijun])
+      tenkan_max: _.max([c.tenkan, c.kijun])
+      kumo_min: _.min([c.senkou_a, c.senkou_b])
+      kumo_max: _.max([c.senkou_a, c.senkou_b])
+    # copy in current ichi state
+    for own key of c
+      ichi[key] = c[key]
+    indicators.ichi = ichi
+    
+    # historic price values to be used with signals
+    price = context.ha.ins.close
+    
+    ##### TA  #######
+    
+    # Plotting    
     
     plot
         Price: 
             instrument.price
+    if context.MACDplot && context.PLOT
+        if context.graphHist 
+            graphHist = storage.firstAssetPrice * 0.80
+            context.graphHist = false
+        else     
+            graphHist = indicators.macd.histogram * 10 + storage.firstAssetPrice * 0.80
+            context.graphHist = true
+        plot
+    
         #MACD: macd.macd * 10 + storage.firstAssetPrice * 0.95
         #SIGNAL: macd.signal * 10 + storage.firstAssetPrice * 0.95
-        'MACD HISTOGRAM': 
-            macd.histogram * 10 + storage.firstAssetPrice * 0.80
-        'RSI': 
-            storage.firstAssetPrice * 0.60 + (rsi * (storage.rsiBand / 400))    
-        'rsi low 40': 
-            storage.firstAssetPrice * 0.60 + (40 * (storage.rsiBand / 400))
-        'rsi high 60': 
-            storage.firstAssetPrice * 0.60 + (60 * (storage.rsiBand / 400))
-        "histogram ground": 
-            storage.firstAssetPrice * 0.80
-        "histogram graph":
-            graphHist    
-# Plotting
+            'MACD HISTOGRAM': 
+                indicators.macd.histogram * 10 + storage.firstAssetPrice * 0.80
+            "histogram ground": 
+                storage.firstAssetPrice * 0.80
+            "histogram graph":
+                graphHist   
+                
+    if context.RSIplot && context.PLOT
+        plot
+            'RSI': 
+                storage.firstAssetPrice * 0.60 + (indicators.rsi * (storage.rsiBand / 400))    
+            'rsi low 40': 
+                storage.firstAssetPrice * 0.60 + (40 * (storage.rsiBand / 400))
+            'rsi high 60': 
+                storage.firstAssetPrice * 0.60 + (60 * (storage.rsiBand / 400))
+        
     
-# Strategy MACD + RSI #    
+    # plot code
+    if context.ICHIplot && context.PLOT      
+    
+        if ichi.senkou_a > ichi.senkou_b
+            graph2 = indicators.ichi.senkou_a *2.5 - _.last(price)*1.5
+            if context.ink_1
+                graph1 = indicators.ichi.senkou_a *2.5 - _.last(price)*1.5
+                context.ink_1 = false
+            else    
+                graph1 = indicators.ichi.senkou_b *2.5 - _.last(price)*1.5
+                context.ink_1 = true
+        else
+            graph1 = indicators.ichi.senkou_b *2.5 - _.last(price)*1.5
+            if context.ink_2
+                graph2 = indicators.ichi.senkou_a *2.5 - _.last(price)*1.5
+                context.ink_2 = false
+            else 
+                graph2 = indicators.ichi.senkou_b *2.5 - _.last(price)*1.5
+                context.ink_2 = true
+    
+        plot
+            price: _.last(price)
+            #short: short
+            #long: long
+            tenkan: indicators.ichi.tenkan * 2.5 - _.last(price)*1.5
+            kijun: indicators.ichi.kijun * 2.5 - _.last(price)*1.5
+            senkou_a: indicators.ichi.senkou_a * 2.5 - _.last(price)*1.5
+            senkou_b: indicators.ichi.senkou_b * 2.5 - _.last(price)*1.5
+            #tenkan: ind.ichi.tenkan
+            #kijun: ind.ichi.kijun
+            #senkou_a: ind.ichi.senkou_a
+            #senkou_b: ind.ichi.senkou_b
+            ink_1: graph1
+            ink_2: graph2
+    # plot code        
+    # Plotting
+    
+    #Strategy.decision context.config, instrument, indicators, storage.lastAssetPrice
+    
+      
     if storage.maxAssetPrice > instrument.price
         storage.maxAssetPrice = instrument.price
     
-    if (rsi < 40 && macd.histogram >= 0) &&  context.trading && ((storage.lastAssetPrice >= instrument.price) || !context.buyings)
-    #if (macd.histogram >= 0) &&  context.trading && ((storage.lastAssetPrice >= instrument.price) || !context.buyings)
-    #if (rsi < 40 && macd.histogram >= 0) &&  context.trading
-    #if (rsi < 40 && macd.histogram >= 0) #&& ((storage.lastAssetPrice >= instrument.price) || !context.buyings)
-        debug "Buy signal: MACD Histogram = #{macd.histogram} and RSI = #{rsi}"
-        if currencyTotal 
-            if trading.buy instrument #, "limit", currencyTotal / (instrument.price * 2), instrument.price * 1.005
-                storage.lastAssetPrice = instrument.price
-                context.buyings += 1
-                context.trading = false
-        else
-            context.trading = false
-        
+    # Strategy #  
     
-    if ((rsi > 60 && macd.histogram <= 0) && !context.trading) && ((storage.lastAssetPrice <= instrument.price) || !context.sellings)
-    #if ((macd.histogram <= 0) && !context.trading) && ((storage.lastAssetPrice <= instrument.price) || !context.sellings)
-    #if ((rsi > 60 && macd.histogram <= 0) && !context.trading)
-    #if (rsi > 60 && macd.histogram <= 0) #&& ((storage.lastAssetPrice <= instrument.price) || !context.sellings)
-        debug "Sell signal: MACD Histogram = #{macd.histogram} and RSI = #{rsi}"
-        if assetsTotal
-            if trading.sell instrument #, "limit", assetsTotal / 2, instrument.price * 0.995
-                context.sellings += 1
-                context.trading = true
-                storage.lastAssetPrice = instrument.price
-        else
-            context.trading = true    
-# Strategy MACD + RSI #
+    if context.trading 
+        #debug "Start buy!"
+        #if (indicators.rsi < 40 && indicators.macd.histogram >= 0) &&  context.trading && ((storage.lastAssetPrice >= instrument.price) || !context.buyings)
+        #if (macd.histogram >= 0) &&  context.trading && ((storage.lastAssetPrice >= instrument.price) || !context.buyings)
+        #if (indicators.rsi < 40 && indicators.macd.histogram >= 0) 
+        #if (rsi < 40 && macd.histogram >= 0) #&& ((storage.lastAssetPrice >= instrument.price) || !context.buyings)
+        if Strategy.decision context.config, instrument, indicators, storage.lastAssetPrice, context.trading
+            debug "Buy signal: MACD Histogram = #{indicators.macd.histogram} and RSI = #{indicators.rsi}"
+            if currencyTotal 
+                if trading.buy instrument #, "limit", currencyTotal / (instrument.price * 2), instrument.price * 1.005
+                    storage.lastAssetPrice = instrument.price
+                    context.buyings += 1
+                    context.trading = false
+            else
+                context.trading = false
+    
+    else     
+        #debug "Start sell!"
+        #if ((indicators.rsi > 60 && indicators.macd.histogram <= 0) && !context.trading) && ((storage.lastAssetPrice <= instrument.price) || !context.sellings)
+        #if ((macd.histogram <= 0) && !context.trading) && ((storage.lastAssetPrice <= instrument.price) || !context.sellings)
+        #if (indicators.rsi > 60 && indicators.macd.histogram <= 0) 
+        #if (rsi > 60 && macd.histogram <= 0) #&& ((storage.lastAssetPrice <= instrument.price) || !context.sellings)
+        if Strategy.decision context.config, instrument, indicators, storage.lastAssetPrice, context.trading
+            debug "Sell signal: MACD Histogram = #{indicators.macd.histogram} and RSI = #{indicators.rsi}"
+            if assetsTotal
+                if trading.sell instrument #, "limit", assetsTotal / 2, instrument.price * 0.995
+                    context.sellings += 1
+                    context.trading = true
+                    storage.lastAssetPrice = instrument.price
+            else
+                context.trading = true    
+    # Strategy #
+    
+serialize: (context) ->
+  # serialize bot state
 
 onRestart: ->
 #	debug "Restart detected"
@@ -1105,7 +511,7 @@ onRestart: ->
     assetsAvailable = assetsTotal
     currencyTotal = @portfolios[instrument.market].positions[instrument.curr()].amount
     currencyAvailable = currencyTotal
-    result = functions.reports_ instrument, currencyTotal, assetsTotal, storage.firstCurrency, storage.firstAsset, storage.firstAssetPrice 
+    result = Utils.reports_ instrument, currencyTotal, assetsTotal, storage.firstCurrency, storage.firstAsset, storage.firstAssetPrice 
     
     info "_____BOT RESTARTED____"
     debug "Start price: #{storage.firstAssetPrice}"
@@ -1134,7 +540,7 @@ onStop: ->
     assetsAvailable = assetsTotal
     currencyTotal = @portfolios[instrument.market].positions[instrument.curr()].amount
     currencyAvailable = currencyTotal
-    result = functions.reports_ instrument, currencyAvailable, assetsAvailable, storage.firstCurrency, storage.firstAsset, storage.firstAssetPrice 
+    result = Utils.reports_ instrument, currencyAvailable, assetsAvailable, storage.firstCurrency, storage.firstAsset, storage.firstAssetPrice 
     
     info "_____BOT STOPED____"
     debug "Start price: #{storage.firstAssetPrice}"
