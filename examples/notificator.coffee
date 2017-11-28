@@ -2,7 +2,7 @@
     --- Simple RSI HELPER bot based on Heikin-Ashi Bars ---
     this bot send you email and SMS if RSI reach certain conditions
     and on certain price change
-		Credits: aspiramedia, Chris Moody, Thanasis
+    Credits: aspiramedia, Chris Moody, Thanasis
     development by cryptelligent
 ###
 
