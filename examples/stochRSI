@@ -1,0 +1,81 @@
+# Credits : Thanasis
+# Address : 33Bz67vHXaKAL2GC9f3xWTxxoVKDqPrZ3H
+
+talib = require 'talib'
+
+init: -> 
+
+    @context.lengthRSI   = 14     
+    @context.lengthStoch = 14
+    @context.smoothK     = 3
+    @context.smoothD     = 3
+
+handle: ->
+
+    instrument =   @data.instruments[0]
+
+    #RSI - Relative Strength Index  
+    rsi = (data, lag, period) ->
+        results = talib.RSI
+            inReal   : data
+            startIdx : 0
+            endIdx   : data.length - lag
+            optInTimePeriod : period
+
+    #SMA - Simple Moving Average  
+    sma = (data, lag, period) ->
+        results = talib.SMA
+            inReal   : data
+            startIdx : 0
+            endIdx   : data.length - lag
+            optInTimePeriod : period
+
+    if @context.lengthStoch < @context.lengthRSI then @context.lengthStoch = @context.lengthRSI
+
+    stochResults = []
+    for n in [@context.lengthStoch .. 1] 
+        rsiResults =   rsi(instrument.close, n, @context.lengthRSI)
+        rsi_last   = _.last(rsiResults)           
+        highest    = _.max(_.takeRight(rsiResults, @context.lengthStoch))
+        lowest     = _.min(_.takeRight(rsiResults, @context.lengthStoch))
+        stoch_rsi  =   100 * (rsi_last - lowest) / (highest - lowest)
+        stochResults.push  stoch_rsi
+
+    kResults = sma(stochResults, 1, @context.smoothK)    
+    dResults = sma(kResults, 1, @context.smoothD)      
+
+    k = _.last(kResults)
+    d = _.last(dResults)
+
+    setPlotOptions
+        k:
+            color: 'blue'
+            lineWidth: 1.5
+            secondary: true
+        d:
+            color: 'orange'
+            lineWidth: 1.5
+            secondary: true
+        Basis_50:
+            color: 'red'
+            lineWidth: 1
+            secondary: true
+        Upper_75:
+            color: 'purple'
+            lineWidth: 1
+            secondary: true
+        Lower_25:
+            color: 'purple'
+            lineWidth: 1
+            secondary: true        
+    plot
+        k: k
+        d: d
+        Basis_50: 50    
+        Upper_75: 75
+        Lower_25: 25
+
+    warn "======== Thanasis manual implementation StochRSI ========"
+    debug "k: #{k}"
+    debug "d: #{d}"
+    debug " "
