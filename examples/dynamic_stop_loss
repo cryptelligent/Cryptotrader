@@ -1,0 +1,58 @@
+#########   Credits
+
+# Thanasis  Efthymiou
+# Address : 3NMF6K93oFEzkN74gfHbPkyDs26mL4hbHa
+# see also: https://cryptotrader.org/topics/270794/dynamic-trailing-stop-loss
+#########    Input Parametrers
+
+a    =    askParam 'A - fix stop loss price lower than current price', 575
+x    =    askParam 'X - highest price - X USD', 20
+y    =    askParam 'Y - decrease X by Y %  for every ...', 2
+z    =    askParam 'Z - ...for every + Z USD increase in price', 10
+price_take_profit   = askParam 'Price to take the profit and stop the bot', 650
+price_flash_no_sell = askParam 'Price flash down to not sell at any case', 500
+ticks_period        = askParam 'Tick period for dynamic stop loss', 30
+
+#########  Initialization 
+
+init: (context)->
+
+#########  Handle Routine 
+
+handle: (context, data, storage)->
+
+    instrument       =  data.instruments[0]
+    price            =  instrument.close[instrument.close.length - 1]
+
+    storage.ticks  ?= 0
+    storage.ticks   = storage.ticks   + 1
+
+    storage.price_sample ?= price
+    if storage.ticks % ticks_period == 0
+      storage.price_sample = price
+
+    storage.fix_stop_loss     =  a
+    storage.current_stop_loss ?=  storage.price_sample - x
+
+
+    storage.max_high ?=  price  
+    if storage.price_sample > storage.max_high + z  
+       x =  x * (1 - y / 100)
+       storage.max_high = storage.price_sample
+       #storage.current_stop_loss =  storage.price_sample - x
+       storage.current_stop_loss =  storage.max_high - x
+
+
+    if price < Math.max(storage.fix_stop_loss, storage.current_stop_loss) and price > price_flash_no_sell
+       sell instrument
+
+    if price > price_take_profit and price > price_flash_no_sell
+       sell instrument
+       stop()
+
+
+    plot
+      Stop_Fix      : storage.fix_stop_loss
+      Stop_Trailing : storage.current_stop_loss
+
+#########  End 
