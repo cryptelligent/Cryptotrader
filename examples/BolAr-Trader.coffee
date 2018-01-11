@@ -1,3 +1,4 @@
+see also: https://cryptotrader.org/topics/407190/new-well-performing-trading-algorythm-fibonacci-example
 #########################################################################
 #                                                                       #
 #                   BolAr-Trader by Metatron                            #
