@@ -133,7 +133,7 @@ handle: (context, data)->
                     throw e # rethrow unhandled exception#
         #stop_loss
     else if (price < (storage.coin_price_ini * _stoploss))
-        warn "stop_loss should be executed at price:#{price} of initial #{storage.storage.coin_price_inie}"
+        warn "stop_loss should be executed at price:#{price} of initial #{storage.coin_price_ini}"
         trading.sell ins, 'market', maximumSellAmount
     else if (rsiResults < _lower_treshold)
         if (maximumBuyAmount > minimumBuySellAmount)
