@@ -1,0 +1,259 @@
+###########################################################  
+#                                                         #
+# Thanasis      full working framework                    #
+#                                                         #
+# Full name:    Thanasis Efthymiou                        #
+#                                                         #
+# BTC:          1CRSH4LGGRWVWqgwfquky2Rk5eJK6gsyus        #
+#                                                         #
+# e-mail:       cryptotrader.thanasis@gmail.com           #
+#                                                         #
+###########################################################
+### see also original post: https://cryptotrader.org/topics/685168/thanasis-best-btc-e-bot
+class Init
+
+########################################
+#### define basic constants ############
+
+  @init_context: (context) ->
+
+    context.fee              = 0.2
+
+    context.lag              = 1
+    context.period           = 12
+    
+    
+    
+ 
+
+###### Serialized constants - don't touch bellow ###########
+
+    
+    context.price_buy                 =   0
+    context.price_sell                =   0 
+    context.first_price               =   0
+    context.number_of_orders          =   0
+    context.have_fiat                 =   null
+    context.have_coins                =   null
+    context.commisions_paid           =   0
+    context.price_of_last_order       =   null
+    context.last_action_was           =   null
+    
+
+#################################################################################
+
+class functions
+
+########################################
+#### basic functions #############
+
+ 
+    
+  @percent: (x,y) ->
+
+    (( x - y ) / y) * 100
+    
+  
+    
+
+########################################
+####### indicatots ##################### 
+
+
+  
+     
+  @aroon: (high, low, lag, period) ->
+    results = talib.AROON
+      high: high
+      low: low
+      startIdx: 0
+      endIdx: high.length - lag
+      optInTimePeriod: period
+    result =
+      up: _.last(results.outAroonUp)
+      down: _.last(results.outAroonDown)
+    result
+    
+  
+  
+  @mfi: (high, low, close, volume,lag, period) ->
+    results = talib.MFI
+      high: high
+      low: low
+      close: close
+      volume: volume
+      startIdx: 0
+      endIdx: high.length - lag
+      optInTimePeriod: period
+    _.last(results)
+   
+  
+    
+#################################################################################
+
+  
+init: (context) ->
+
+  Init.init_context(context)
+
+#################################################################################
+
+serialize: (context)->
+    
+    price_of_last_order =   context.price_of_last_order   
+    context.price_buy   =   context.price_buy
+    context.price_sell  =   context.price_sell
+    number_of_orders    =   context.number_of_orders 
+    have_fiat           =   context.have_fiat
+    have_coins          =   context.have_coins 
+    first_price         =   context.first_price
+    first_price_found   =   context.first_price_found
+    first_capital       =   context.first_capital
+    commisions_paid     =   context.commisions_paid
+    last_action_was     =   context.last_action_was
+    
+  
+#################################################################################
+
+handle: (context, data)->
+
+ 
+########################################
+####### define instrument ##############
+
+    instrument =  data.instruments[0]
+    
+    price      =  instrument.close[instrument.close.length - 1]
+    open       =  instrument.open[instrument.open.length - 1]
+    high       =  instrument.high[instrument.high.length - 1]
+    low        =  instrument.low[instrument.low.length - 1]
+    close      =  instrument.close[instrument.close.length - 1]
+    volume     =  instrument.volumes[instrument.volumes.length - 1]
+    
+    
+########################################
+##### calculate capital ################    
+
+    
+    unless context.first_price_found
+      context.first_price           =  price
+      fiat                          =  portfolio.positions[instrument.curr()].amount
+      coins                         =  portfolio.positions[instrument.asset()].amount
+      context.first_capital         =  fiat + coins * price
+      last_action_was               =  null
+      maximum = Math.max(fiat, coins * price)
+      if maximum = fiat
+         context.have_fiat          = true
+         context.have_coins         = false 
+      else 
+         context.have_fiat          = false
+         context.have_coins         = true  
+      context.first_price_found     =  true
+    
+    fiat     =  portfolio.positions[instrument.curr()].amount
+    coins    =  portfolio.positions[instrument.asset()].amount
+    coins_in_fiat =  coins * price
+    capital       =  fiat + coins * price
+
+    
+    
+   
+
+
+
+
+
+########################################
+##### define indicator functions ####### 
+  
+    
+    aroon = functions.aroon(instrument.high, instrument.low,context.lag,context.period)    
+    
+    mfi = functions.mfi(instrument.high, instrument.low, instrument.close, instrument.volumes, context.lag,context.period) 
+    
+
+
+    
+
+ 
+
+
+   
+    
+########################################
+######    buy or sell Strategy #########
+
+ 
+
+    if  aroon.up - aroon.down > 0 and fiat > 0      
+ 
+        ######  don't touch bellow #####
+        if context.have_fiat
+           buy instrument
+           context.number_of_orders    =  context.number_of_orders + 1
+           context.price_buy           =  price
+           context.commisions_paid     =  context.commisions_paid + context.fee * capital / 100
+           context.price_of_last_order =  context.price_buy
+           context.last_action_was     =  "buy"
+           context.have_coins          =  true
+           context.have_fiat           =  false
+
+    
+    
+    if  aroon.up - aroon.down < 0  and  mfi > 40 
+        
+        ######  don't touch bellow #####
+        if context.have_coins 
+           sell instrument
+           context.number_of_orders    =  context.number_of_orders + 1
+           context.price_sell          =  price
+           context.commisions_paid     =  context.commisions_paid + context.fee * capital / 100    
+           context.price_of_last_order =  context.price_sell   
+           context.last_action_was     =  "sell"
+           context.have_coins          =  false
+           context.have_fiat           =  true
+    
+    
+   
+
+#########################################
+######   recalculate capital ############
+
+    fiat     =  portfolio.positions[instrument.curr()].amount
+    coins    =  portfolio.positions[instrument.asset()].amount
+    coins_in_fiat =  coins * price
+    capital       =  fiat + coins * price
+    
+    if context.have_fiat
+       efficiency_of_last_trade = -functions.percent(price, context.price_of_last_order)
+    else 
+       efficiency_of_last_trade = functions.percent(price, context.price_of_last_order) 
+   
+    percent_buy_and_hold     =  Math.round(100 * functions.percent(price, context.first_price))/100
+    percent_bot              =  Math.round(100 * functions.percent(capital, context.first_capital))/100
+    efficiency_of_last_trade =  Math.round(100 * efficiency_of_last_trade)/100
+    context.commisions_paid  =  Math.round(100 * context.commisions_paid)/100
+    context.first_capital    =  Math.round(100 * context.first_capital)/100
+    capital   =  Math.round(100 * capital)/100
+
+ 
+############################################ 
+######   debug  stats ######################    
+
+  
+    debug "###########################################################"
+    debug "price now:  #{price}"
+    debug "last action was '#{context.last_action_was}' at the price of:  #{context.price_of_last_order}"
+    debug "smartness of the bot from the last trade:  #{efficiency_of_last_trade} %"
+    debug "total number of buy/sell orders:  #{context.number_of_orders}"
+    debug "total commisions paid by now:  #{context.commisions_paid}"
+    debug "start capital:  #{context.first_capital}"
+    debug "capital now:  #{capital}"
+    debug "total buy and hold efficiency:  #{percent_buy_and_hold} %"    
+    debug "total bot efficiency:  #{percent_bot} % "
+   
+ 
+    
+
+    
+    
