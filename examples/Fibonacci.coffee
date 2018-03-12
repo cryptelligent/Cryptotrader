@@ -2,7 +2,7 @@
     Fibonacci Support and Resistance lines
     inspired by DISTANT https://cryptotrader.org/live/iWXWehmxdp5mMLnxk
     by Cryptelligent
-    see also 
+    see also https://cryptotrader.org/topics/328326/one-more-fibonacci
 ###
 
 trading = require 'trading' # import core trading module
